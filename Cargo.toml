@@ -1,0 +1,13 @@
+[package]
+name = "serde_tokenstream"
+version = "0.1.0"
+authors = ["Adam H. Leventhal <ahl@oxide.computer>"]
+edition = "2018"
+
+[dependencies]
+proc-macro2  = "1"
+serde = { version = "1", features = ["derive"] }
+syn = { version = "1", features = ["full", "extra-traits"] }
+
+[dev-dependencies]
+quote = "1"
