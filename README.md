@@ -14,7 +14,7 @@ this:
     name = "SNPP",
     owner = "Canary M Burns",
     details = {
-        type = Fission,
+        kind = Fission,
         year_of_opening = 1968,
     }
 }]
@@ -51,7 +51,7 @@ struct Config {
 
 #[derive(Deserialize)]
 struct ConfigDetails {
-    type: ConfigDetailsType,
+    kind: ConfigDetailsType,
     year_of_opening: usize,
 }
 

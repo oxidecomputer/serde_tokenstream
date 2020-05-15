@@ -165,9 +165,9 @@ impl<'de> TokenDe {
     {
         let next = self.next();
 
-        if let Some(TokenTree::Literal(literal)) = &next {
-            if let Ok(syn::ExprLit { lit: syn::Lit::Int(i), .. }) =
-                syn::parse_str::<syn::ExprLit>(&literal.to_string())
+        if let Some(tt) = &next {
+            if let Ok(i) =
+                syn::parse2::<syn::LitInt>(TokenStream::from(tt.clone()))
             {
                 if let Ok(value) = i.base10_parse::<T>() {
                     return visit(value);
@@ -186,9 +186,9 @@ impl<'de> TokenDe {
     {
         let next = self.next();
 
-        if let Some(TokenTree::Literal(literal)) = &next {
-            if let Ok(syn::ExprLit { lit: syn::Lit::Float(f), .. }) =
-                syn::parse_str::<syn::ExprLit>(&literal.to_string())
+        if let Some(tt) = &next {
+            if let Ok(f) =
+                syn::parse2::<syn::LitFloat>(TokenStream::from(tt.clone()))
             {
                 if let Ok(value) = f.base10_parse::<T>() {
                     return visit(value);
@@ -416,11 +416,10 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         let token = self.next();
         let value = match &token {
             Some(TokenTree::Ident(ident)) => Some(ident.to_string()),
-            Some(TokenTree::Literal(lit)) => {
-                match syn::parse_str::<syn::ExprLit>(&lit.to_string()) {
-                    Ok(syn::ExprLit { lit: syn::Lit::Str(s), .. }) => {
-                        Some(s.value())
-                    }
+            Some(tt) => {
+                match syn::parse2::<syn::LitStr>(TokenStream::from(tt.clone()))
+                {
+                    Ok(s) => Some(s.value()),
                     _ => None,
                 }
             }
@@ -542,13 +541,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
     {
         let next = self.next();
 
-        if let Some(TokenTree::Literal(literal)) = &next {
-            if let Ok(syn::ExprLit { lit: syn::Lit::Char(ch), .. }) =
-                syn::parse_str::<syn::ExprLit>(&literal.to_string())
+        if let Some(tt) = &next {
+            if let Ok(ch) =
+                syn::parse2::<syn::LitChar>(TokenStream::from(tt.clone()))
             {
                 return visitor.visit_char(ch.value());
             }
         }
+
         self.deserialize_error(next, "a char")
     }
 
@@ -639,8 +639,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
             Some(TokenTree::Ident(ident)) => {
                 visitor.visit_string(ident.to_string())
             }
-            Some(TokenTree::Literal(lit)) => {
-                match syn::parse_str::<ExprLit>(&lit.to_string()) {
+            Some(tt @ TokenTree::Literal(_)) => {
+                match syn::parse2::<ExprLit>(TokenStream::from(tt.clone())) {
                     Ok(ExprLit { lit: Lit::Str(s), .. }) => {
                         visitor.visit_string(s.value())
                     }
@@ -665,7 +665,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
                     }
                     Err(err) => panic!(
                         "can't happen; must be parseable: {} {}",
-                        lit, err
+                        tt, err
                     ),
                 }
             }
@@ -1419,6 +1419,35 @@ mod tests {
             .into(),
         ) {
             Ok(t) => assert_eq!(t.tup.1, 2),
+            Err(err) => panic!("unexpected failure: {:?}", err),
+        }
+    }
+
+    #[test]
+    fn null_group() {
+        #[derive(Deserialize)]
+        struct Test {
+            #[allow(dead_code)]
+            s: String,
+        }
+
+        // If a consumer uses macro_rules! to specify an expression it will be
+        // enclosed in a group with the None delimiter -- effectively an
+        // invisible grouping. The constructs that case.
+        let group = proc_macro2::Group::new(
+            proc_macro2::Delimiter::None,
+            quote! {
+                "some string"
+            },
+        );
+
+        match from_tokenstream::<Test>(
+            &quote! {
+                s = #group
+            }
+            .into(),
+        ) {
+            Ok(t) => assert_eq!(t.s, "some string"),
             Err(err) => panic!("unexpected failure: {:?}", err),
         }
     }
