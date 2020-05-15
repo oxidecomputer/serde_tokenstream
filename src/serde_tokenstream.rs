@@ -808,6 +808,7 @@ mod tests {
 
         Ok(())
     }
+
     #[test]
     fn simple_map2() -> Result<()> {
         let data = from_tokenstream::<MapData>(
@@ -850,6 +851,7 @@ mod tests {
             Ok(_) => panic!("unexpected success"),
         }
     }
+
     #[test]
     fn just_ident() {
         match from_tokenstream::<MapData>(
@@ -1106,6 +1108,7 @@ mod tests {
             Ok(_) => panic!("unexpected success"),
         }
     }
+
     #[test]
     fn bad_map_value() {
         match from_tokenstream::<MapData>(
@@ -1136,6 +1139,7 @@ mod tests {
         .unwrap();
         assert!(t.array.is_empty());
     }
+
     #[test]
     fn simple_array2() {
         #[derive(Deserialize)]
@@ -1439,6 +1443,7 @@ mod tests {
             s = #group
         }
     }
+
     #[test]
     fn null_group() {
         #[derive(Deserialize)]
