@@ -1424,6 +1424,21 @@ mod tests {
         }
     }
 
+    fn make_null_group() -> TokenStream {
+        // If a consumer uses macro_rules! to specify an expression it will be
+        // enclosed in a group with the None delimiter -- effectively an
+        // invisible grouping. The constructs that case.
+        let group = proc_macro2::Group::new(
+            proc_macro2::Delimiter::None,
+            quote! {
+                "some string"
+            },
+        );
+
+        quote! {
+            s = #group
+        }
+    }
     #[test]
     fn null_group() {
         #[derive(Deserialize)]
@@ -1432,22 +1447,7 @@ mod tests {
             s: String,
         }
 
-        // If a consumer uses macro_rules! to specify an expression it will be
-        // enclosed in a group with the None delimiter -- effectively an
-        // invisible grouping. The constructs that case.
-        let group = proc_macro2::Group::new(
-            proc_macro2::Delimiter::None,
-            quote! {
-                "some string"
-            },
-        );
-
-        match from_tokenstream::<Test>(
-            &quote! {
-                s = #group
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&make_null_group().into()) {
             Ok(t) => assert_eq!(t.s, "some string"),
             Err(err) => panic!("unexpected failure: {:?}", err),
         }
@@ -1455,22 +1455,7 @@ mod tests {
 
     #[test]
     fn null_group_map() -> Result<()> {
-        // If a consumer uses macro_rules! to specify an expression it will be
-        // enclosed in a group with the None delimiter -- effectively an
-        // invisible grouping. The constructs that case.
-        let group = proc_macro2::Group::new(
-            proc_macro2::Delimiter::None,
-            quote! {
-                "some string"
-            },
-        );
-
-        let data = from_tokenstream::<MapData>(
-            &quote! {
-                s = #group
-            }
-            .into(),
-        )?;
+        let data = from_tokenstream::<MapData>(&make_null_group().into())?;
 
         compare_kv(data.get("s"), "some string");
 
