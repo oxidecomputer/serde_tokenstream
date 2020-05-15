@@ -625,10 +625,11 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
                         visitor.visit_seq(TokenDe::new(stream))
                     }
                 }
-                Delimiter::None => Err(InternalError::Normal(Error::new(
-                    group.span(),
-                    format!("the null delimiter is not allowed"),
-                ))),
+                // A None delimiter occurs for a macro_rules! substitution. We
+                // can simply descend into those tokens.
+                Delimiter::None => {
+                    TokenDe::new(&group.stream()).deserialize_any(visitor)
+                }
             },
             Some(TokenTree::Ident(ident)) if ident.to_string() == "true" => {
                 visitor.visit_bool(true)
@@ -1450,5 +1451,29 @@ mod tests {
             Ok(t) => assert_eq!(t.s, "some string"),
             Err(err) => panic!("unexpected failure: {:?}", err),
         }
+    }
+
+    #[test]
+    fn null_group_map() -> Result<()> {
+        // If a consumer uses macro_rules! to specify an expression it will be
+        // enclosed in a group with the None delimiter -- effectively an
+        // invisible grouping. The constructs that case.
+        let group = proc_macro2::Group::new(
+            proc_macro2::Delimiter::None,
+            quote! {
+                "some string"
+            },
+        );
+
+        let data = from_tokenstream::<MapData>(
+            &quote! {
+                s = #group
+            }
+            .into(),
+        )?;
+
+        compare_kv(data.get("s"), "some string");
+
+        Ok(())
     }
 }
