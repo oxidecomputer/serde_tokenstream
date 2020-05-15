@@ -3,6 +3,12 @@ name = "serde_tokenstream"
 version = "0.1.0"
 authors = ["Adam H. Leventhal <ahl@oxide.computer>"]
 edition = "2018"
+license = "Apache-2.0"
+description = "A serde deserializer for proc-macro TokenStreams"
+repository = "https://github.com/oxidecomputer/serde_tokenstream"
+readme = "README.md"
+keywords = ["serde", "tokenstream", "proc_macro"]
+categories = ["development-tools::procedural-macro-helpers", "parsing"]
 
 [dependencies]
 proc-macro2  = "1"

@@ -1,9 +1,10 @@
 // Copyright 2020 Oxide Computer Company
 
-//! Serde implementation for proc_macro::TokenStream. This is intended for
-//! proc_macro builders who want rich configuration in their custom attributes.
+//! `serde::Deserializer` implementation for `proc_macro2::TokenStream`. This
+//! is intended for proc_macro builders who want rich configuration in their
+//! custom attributes.
 //!
-//! If the consumers of your macro use it like this:
+//! If you'd like the consumers of your macro use it like this:
 //!
 //! ```ignore
 //! #[my_macro {
@@ -15,7 +16,7 @@
 //! }]
 //! ```
 //!
-//! Your macro probably starts like this:
+//! Your macro will start like this:
 //!
 //! ```ignore
 //! #[proc_macro_attribute]
@@ -27,10 +28,24 @@
 //! ```
 //!
 //! Use `serde_tokenstream` to deserialize `attr` into a structure with the
-//! `Deserialize` trait (typically `derive`d):
+//! `Deserialize` trait (typically via a `derive` macro):
 //!
-//! ```ignore
-//!     let cfg = from_tokenstream::<Config>(&TokenStream::from(attr))?;
+//! ```
+//! # use proc_macro2::TokenStream;
+//! # use serde_tokenstream::from_tokenstream;
+//! # use serde::Deserialize;
+//! # #[derive(Deserialize)]
+//! # struct Config;
+//! # pub fn my_macro(
+//! #     attr: proc_macro2::TokenStream,
+//! #     item: proc_macro2::TokenStream,
+//! # ) -> proc_macro2::TokenStream {
+//! let config = match from_tokenstream::<Config>(&TokenStream::from(attr)) {
+//!     Ok(c) => c,
+//!     Err(err) => return err.to_compile_error().into(),
+//! };
+//! # item
+//! # }
 //! ```
 
 mod serde_tokenstream;

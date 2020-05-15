@@ -78,7 +78,7 @@ pub fn MyMacro(
     let config = match from_tokenstream::<Config>(&TokenStream::from(attr)) {
         Ok(c) => c,
         Err(err) => return err.to_compile_error().into(),
-    }
+    };
 
     ...
 }

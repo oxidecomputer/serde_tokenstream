@@ -10,9 +10,43 @@ use serde::de::{
 use serde::{Deserialize, Deserializer};
 use syn::{ExprLit, Lit};
 
+/// Alias for `syn::Error`.
+///
+/// `syn::Error` already does the heavy lifting of massaging errors for
+/// consumption by the compiler so we lean on that report deserialization
+/// errors so that the compiler reports and renders them appropriately.
 pub type Error = syn::Error;
+
+/// Alias for a Result with the error type serde_tokenstream::Error.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Deserialize an instance of type T from a TokenStream.
+///
+/// # Example
+/// ```
+/// use quote::quote;
+/// use serde::Deserialize;
+/// use serde_tokenstream::from_tokenstream;
+/// use serde_tokenstream::Result;
+///
+/// fn main() -> Result<()> {
+///     #[derive(Deserialize)]
+///     struct Record {
+///         worker: String,
+///         floor: u32,
+///         region: String,
+///     }
+///     let tokenstream = quote! {
+///         worker = "Homer J. Simpson",
+///         floor = 7,
+///         region = "G",
+///     };
+///
+///     let rec = from_tokenstream::<Record>(&tokenstream)?;
+///     println!("{} {}{}", rec.worker, rec.floor, rec.region);
+///     Ok(())
+/// }
+/// ```
 pub fn from_tokenstream<'a, T>(tokens: &'a TokenStream) -> Result<T>
 where
     T: Deserialize<'a>,
