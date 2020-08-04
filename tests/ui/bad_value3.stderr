@@ -1,0 +1,5 @@
+error: expected a unit, but found `1`
+ --> $DIR/bad_value3.rs:6:12
+  |
+6 |     unit = 1,
+  |            ^

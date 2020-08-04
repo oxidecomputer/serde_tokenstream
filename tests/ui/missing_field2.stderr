@@ -1,0 +1,9 @@
+error: missing field `squeaker`
+ --> $DIR/missing_field2.rs:6:14
+  |
+6 |       nested = {
+  |  ______________^
+7 | |         gosling = 0.0,
+8 | |         eyas = 0,
+9 | |     }
+  | |_____^

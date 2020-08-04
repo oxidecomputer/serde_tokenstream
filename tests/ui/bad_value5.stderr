@@ -1,0 +1,5 @@
+error: expected u32, but found `1.0`
+ --> $DIR/bad_value5.rs:7:16
+  |
+7 |         eyas = 1.0,
+  |                ^^^
