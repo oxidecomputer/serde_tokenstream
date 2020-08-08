@@ -1,0 +1,5 @@
+error: expected a string, but found `?`
+ --> $DIR/bad_value1.rs:6:14
+  |
+6 |     string = ?
+  |              ^

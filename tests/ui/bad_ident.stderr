@@ -1,0 +1,5 @@
+error: expected an identifier, but found `"potato"`
+ --> $DIR/bad_ident.rs:6:5
+  |
+6 |     "potato" = potato
+  |     ^^^^^^^^

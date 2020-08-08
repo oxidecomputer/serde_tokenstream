@@ -1,0 +1,5 @@
+error: unknown variant `NoneOfTheAbove`, expected one of `OptionA`, `OptionB`, `OptionC`
+ --> $DIR/bad_value4.rs:6:15
+  |
+6 |     options = NoneOfTheAbove
+  |               ^^^^^^^^^^^^^^

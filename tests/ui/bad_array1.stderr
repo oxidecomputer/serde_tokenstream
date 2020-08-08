@@ -1,0 +1,5 @@
+error: expected an array, but found `{ }`
+ --> $DIR/bad_array1.rs:6:12
+  |
+6 |     many = {}
+  |            ^^

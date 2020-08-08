@@ -1,0 +1,17 @@
+[package]
+name = "testlib"
+version = "0.1.0"
+authors = ["Adam H. Leventhal <ahl@oxide.computer>"]
+edition = "2018"
+license = "Apache-2.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+serde_tokenstream  = { path = ".." }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+trybuild = "1"

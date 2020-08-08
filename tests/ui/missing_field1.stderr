@@ -1,0 +1,9 @@
+error: missing field `options`
+ --> $DIR/missing_field1.rs:5:1
+  |
+5 | / #[annotation {
+6 | |     string = "hey"
+7 | | }]
+  | |__^
+  |
+  = note: this error originates in an attribute macro (in Nightly builds, run with -Z macro-backtrace for more info)

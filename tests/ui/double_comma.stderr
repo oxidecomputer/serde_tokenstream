@@ -1,0 +1,5 @@
+error: expected an identifier, but found `,`
+ --> $DIR/double_comma.rs:6:18
+  |
+6 |     string = "x",,
+  |                  ^

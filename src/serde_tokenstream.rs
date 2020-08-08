@@ -1,7 +1,10 @@
 // Copyright 2020 Oxide Computer Company
 
 use core::iter::Peekable;
-use std::fmt::{self, Display};
+use std::{
+    any::type_name,
+    fmt::{self, Display},
+};
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use serde::de::{
@@ -71,30 +74,6 @@ where
         ),
         Err(InternalError::Unknown) => {
             panic!("Error::Unknown should never propagate to the caller")
-        }
-    }
-}
-
-// print out the raw tree of TokenStream structures.
-#[allow(dead_code)]
-fn treeify(depth: usize, tt: &TokenStream) {
-    for i in tt.clone().into_iter() {
-        match i {
-            proc_macro2::TokenTree::Group(group) => {
-                println!(
-                    "{:width$}group {}",
-                    "",
-                    match group.delimiter() {
-                        Delimiter::Parenthesis => "()",
-                        Delimiter::Brace => "{}",
-                        Delimiter::Bracket => "[]",
-                        Delimiter::None => "none",
-                    },
-                    width = depth * 2
-                );
-                treeify(depth + 1, &group.stream())
-            }
-            _ => println!("{:width$}{:?}", "", i, width = depth * 2),
         }
     }
 }
@@ -190,7 +169,7 @@ impl<'de> TokenDe {
                 "non-unit variants are not currently supported",
             ))),
             // This can't happen; we will need to have read a token at
-            // this point.j
+            // this point.
             None => Err(InternalError::Unknown),
         }
     }
@@ -213,7 +192,7 @@ impl<'de> TokenDe {
             }
         }
 
-        self.deserialize_error(next, stringify!(T))
+        self.deserialize_error(next, type_name::<T>())
     }
 
     fn deserialize_float<T, VV, F>(&mut self, visit: F) -> InternalResult<VV>
@@ -225,16 +204,23 @@ impl<'de> TokenDe {
         let next = self.next();
 
         if let Some(tt) = &next {
-            if let Ok(f) =
-                syn::parse2::<syn::LitFloat>(TokenStream::from(tt.clone()))
-            {
-                if let Ok(value) = f.base10_parse::<T>() {
-                    return visit(value);
-                }
+            let parsed =
+                match syn::parse2::<ExprLit>(TokenStream::from(tt.clone())) {
+                    Ok(ExprLit {
+                        lit: Lit::Int(i), ..
+                    }) => i.base10_parse::<T>().ok(),
+                    Ok(ExprLit {
+                        lit: Lit::Float(f), ..
+                    }) => f.base10_parse::<T>().ok(),
+                    _ => None,
+                };
+
+            if let Some(value) = parsed {
+                return visit(value);
             }
         }
 
-        self.deserialize_error(next, stringify!(T))
+        self.deserialize_error(next, type_name::<T>())
     }
 }
 
@@ -262,9 +248,7 @@ impl<'de, 'a> MapAccess<'de> for TokenDe {
         K: serde::de::DeserializeSeed<'de>,
     {
         let keytok = match self.input.peek() {
-            None => {
-                return Ok(None);
-            }
+            None => return Ok(None),
             Some(token) => token.clone(),
         };
 
@@ -361,7 +345,7 @@ impl<'de, 'a> EnumAccess<'de> for &mut TokenDe {
                     Err(InternalError::Normal(Error::new(token.span(), msg)))
                 }
                 // This can't happen; we will need to have read a token at
-                // this point.j
+                // this point.
                 None => Err(InternalError::Unknown),
             },
             Err(err) => Err(err),
@@ -517,6 +501,10 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         if let Some(token) = &next {
             if let TokenTree::Group(group) = token {
                 if let Delimiter::Brace = group.delimiter() {
+                    // TODO we should pass fields through to the new TokenDe and
+                    // then use that rather than the call to
+                    // deserialize_ignored_any to determine if the
+                    // given field is valid.
                     match visitor.visit_map(TokenDe::new(&group.stream())) {
                         Err(InternalError::NoData(msg)) => {
                             return Err(InternalError::Normal(Error::new(
@@ -799,7 +787,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         // item (i.e. not just the key), but Span::join requires nightly.
         match self.deserialize_any(visitor) {
             Err(InternalError::Normal(e2)) => err.combine(e2),
-            _ => (),
+            _ => {}
         }
 
         Err(InternalError::Normal(err))
@@ -1092,48 +1080,6 @@ mod tests {
         #[derive(Deserialize)]
         struct Test {
             #[allow(dead_code)]
-            a: String,
-        }
-        match from_tokenstream::<Test>(
-            &quote! {
-                b = 42,
-                a = "howdy",
-            }
-            .into(),
-        ) {
-            Err(msg) => {
-                assert_eq!(msg.to_string(), "extraneous member `b`");
-            }
-            Ok(_) => panic!("unexpected success"),
-        }
-    }
-
-    #[test]
-    fn bad_value4() {
-        #[derive(Deserialize)]
-        struct Test {
-            #[allow(dead_code)]
-            a: String,
-        }
-        match from_tokenstream::<Test>(
-            &quote! {
-                b = ?,
-                a = "howdy",
-            }
-            .into(),
-        ) {
-            Err(msg) => {
-                assert_eq!(msg.to_string(), "extraneous member `b`");
-            }
-            Ok(_) => panic!("unexpected success"),
-        }
-    }
-
-    #[test]
-    fn bad_value5() {
-        #[derive(Deserialize)]
-        struct Test {
-            #[allow(dead_code)]
             a: (),
         }
         match from_tokenstream::<Test>(
@@ -1159,6 +1105,46 @@ mod tests {
         ) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "expected a value, but found `?`")
+            }
+            Ok(_) => panic!("unexpected success"),
+        }
+    }
+
+    #[test]
+    fn extra_member1() {
+        #[derive(Deserialize)]
+        struct Test {
+            #[allow(dead_code)]
+            a: String,
+        }
+        match from_tokenstream::<Test>(
+            &quote! {
+                b = 42,
+                a = "howdy",
+            }
+            .into(),
+        ) {
+            Err(msg) => assert_eq!(msg.to_string(), "extraneous member `b`"),
+            Ok(_) => panic!("unexpected success"),
+        }
+    }
+
+    #[test]
+    fn extra_member2() {
+        #[derive(Deserialize)]
+        struct Test {
+            #[allow(dead_code)]
+            a: String,
+        }
+        match from_tokenstream::<Test>(
+            &quote! {
+                b = ?,
+                a = "howdy",
+            }
+            .into(),
+        ) {
+            Err(msg) => {
+                assert_eq!(msg.to_string(), "extraneous member `b`");
             }
             Ok(_) => panic!("unexpected success"),
         }
@@ -1235,7 +1221,7 @@ mod tests {
     }
 
     #[test]
-    fn bad_array2() {
+    fn bad_array1() {
         #[derive(Deserialize)]
         struct Test {
             #[allow(dead_code)]
@@ -1260,7 +1246,7 @@ mod tests {
     }
 
     #[test]
-    fn bad_array3() {
+    fn bad_array2() {
         match from_tokenstream::<MapData>(
             &quote! {
                 array = [{}<-]
@@ -1276,8 +1262,9 @@ mod tests {
             Ok(_) => panic!("unexpected success"),
         }
     }
+
     #[test]
-    fn bad_array4() {
+    fn bad_array3() {
         #[derive(Deserialize)]
         struct Test {
             #[allow(dead_code)]
@@ -1302,40 +1289,15 @@ mod tests {
     }
 
     #[test]
-    fn bupkis() {
-        #[derive(Deserialize)]
-        struct Test {
-            #[allow(dead_code)]
-            array: String,
-        }
-        match from_tokenstream::<Test>(&quote! {}.into()) {
-            Err(msg) => {
-                assert_eq!(msg.to_string(), "missing field `array`");
-            }
-            Ok(_) => panic!("unexpected success"),
-        }
-    }
-
-    #[test]
-    fn nested_bupkis1() {
-        #[derive(Deserialize)]
-        struct Test {
-            #[allow(dead_code)]
-            array: Test2,
-        }
-        #[derive(Deserialize)]
-        struct Test2 {
-            #[allow(dead_code)]
-            item: u32,
-        }
-        match from_tokenstream::<Test>(
+    fn bad_array4() {
+        match from_tokenstream::<MapData>(
             &quote! {
-                array = {}
+                array = [,]
             }
             .into(),
         ) {
             Err(msg) => {
-                assert_eq!(msg.to_string(), "missing field `item`");
+                assert_eq!(msg.to_string(), "expected a value, but found `,`");
             }
             Ok(_) => panic!("unexpected success"),
         }
@@ -1486,10 +1448,8 @@ mod tests {
     fn null_group() {
         #[derive(Deserialize)]
         struct Test {
-            #[allow(dead_code)]
             s: String,
         }
-
         match from_tokenstream::<Test>(&make_null_group().into()) {
             Ok(t) => assert_eq!(t.s, "some string"),
             Err(err) => panic!("unexpected failure: {:?}", err),
@@ -1503,5 +1463,40 @@ mod tests {
         compare_kv(data.get("s"), "some string");
 
         Ok(())
+    }
+
+    #[test]
+    fn int_as_float() {
+        #[derive(Deserialize)]
+        struct Test {
+            x: f64,
+        }
+        match from_tokenstream::<Test>(
+            &quote! {
+                x = 100
+            }
+            .into(),
+        ) {
+            Ok(t) => assert_eq!(t.x, 100.0),
+            Err(err) => panic!("unexpected failure: {:?}", err),
+        };
+    }
+
+    #[test]
+    fn extra_member_and_bad_value1() {
+        #[derive(Deserialize)]
+        struct Test {}
+        match from_tokenstream::<Test>(
+            &quote! {
+                family = ["homer", "marge", "bart", "lisa", "maggie",,]
+            }
+            .into(),
+        ) {
+            Err(err) => {
+                // TODO there should be two errors here.
+                assert_eq!(err.to_string(), "extraneous member `family`");
+            }
+            Ok(_) => panic!("unexpected success"),
+        };
     }
 }

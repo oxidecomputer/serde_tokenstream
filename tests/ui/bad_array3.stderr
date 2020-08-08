@@ -1,0 +1,5 @@
+error: expected a string, but found `,`
+ --> $DIR/bad_array3.rs:6:13
+  |
+6 |     many = [,]
+  |             ^

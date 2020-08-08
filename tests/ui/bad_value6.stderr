@@ -1,0 +1,5 @@
+error: expected a string, but found `3`
+ --> $DIR/bad_value6.rs:6:37
+  |
+6 |     many = ["1 potato", "2 potato", 3]
+  |                                     ^

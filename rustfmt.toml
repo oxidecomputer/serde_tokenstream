@@ -10,16 +10,14 @@ unstable_features = true
 # Unstable features that we customize locally
 # ---------------------------------------------------------------------------
 #
-# We would like to use "wrap_comments = true" and "comment_width = 80", but
-# there are several issues with our use of it today, including rustfmt#4079 and
-# rustfmt#4020.
-#
 # "overflow_delimited_expr" and "struct_lit_single_line" are both fairly minor,
 # but improve readability.
 #
 format_strings = true
 overflow_delimited_expr = true
 struct_lit_single_line = false
+wrap_comments = true
+format_code_in_doc_comments = true
 
 #
 # ---------------------------------------------------------------------------
@@ -38,8 +36,6 @@ hard_tabs = false
 tab_spaces = 4
 newline_style = "Auto"
 indent_style = "Block"
-wrap_comments = false
-format_code_in_doc_comments = false
 comment_width = 80
 normalize_comments = false
 normalize_doc_attributes = false
@@ -83,7 +79,6 @@ use_field_init_shorthand = false
 force_explicit_abi = true
 condense_wildcard_suffixes = false
 color = "Auto"
-required_version = "1.4.14"
 disable_all_formatting = false
 skip_children = false
 hide_parse_errors = false

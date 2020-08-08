@@ -1,0 +1,11 @@
+error: extraneous member `x`
+ --> $DIR/no_value.rs:6:5
+  |
+6 |     x =
+  |     ^
+
+error: expected a value following `=`
+ --> $DIR/no_value.rs:6:7
+  |
+6 |     x =
+  |       ^
