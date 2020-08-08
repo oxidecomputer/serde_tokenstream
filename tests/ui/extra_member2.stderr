@@ -1,0 +1,11 @@
+error: extraneous member `family`
+ --> $DIR/extra_member2.rs:6:5
+  |
+6 |     family = ["homer", "marge", "bart", "lisa", "maggie",,]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: expected a value, but found `,`
+ --> $DIR/extra_member2.rs:6:58
+  |
+6 |     family = ["homer", "marge", "bart", "lisa", "maggie",,]
+  |                                                          ^

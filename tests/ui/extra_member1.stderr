@@ -2,4 +2,4 @@ error: extraneous member `potato`
  --> $DIR/extra_member1.rs:6:5
   |
 6 |     potato = "potato"
-  |     ^^^^^^
+  |     ^^^^^^^^^^^^^^^^^

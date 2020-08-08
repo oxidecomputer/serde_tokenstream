@@ -91,6 +91,7 @@ struct TokenDe {
     input: Peekable<Box<dyn Iterator<Item = TokenTree>>>,
     current: Option<TokenTree>,
     last: Option<TokenTree>,
+    pending_member: bool,
 }
 
 impl<'de> TokenDe {
@@ -110,6 +111,7 @@ impl<'de> TokenDe {
             input: t.peekable(),
             current: None,
             last: None,
+            pending_member: false,
         }
     }
 
@@ -132,6 +134,10 @@ impl<'de> TokenDe {
             next.as_ref().map(|t| t.clone()),
         );
         next
+    }
+
+    fn previous(&self) -> Option<TokenTree> {
+        self.current.clone().or_else(|| self.last.clone())
     }
 
     fn last_err<T>(&self, what: &str) -> InternalResult<T> {
@@ -247,6 +253,7 @@ impl<'de, 'a> MapAccess<'de> for TokenDe {
     where
         K: serde::de::DeserializeSeed<'de>,
     {
+        println!("next_key_seed {}", type_name::<K>());
         let keytok = match self.input.peek() {
             None => return Ok(None),
             Some(token) => token.clone(),
@@ -276,6 +283,9 @@ impl<'de, 'a> MapAccess<'de> for TokenDe {
             };
         }
 
+        // We expect to have an object member.
+        self.pending_member = true;
+
         key
     }
 
@@ -283,8 +293,12 @@ impl<'de, 'a> MapAccess<'de> for TokenDe {
     where
         V: DeserializeSeed<'de>,
     {
+        println!("next_value_seed {}", type_name::<V>());
         let valtok = self.input.peek().map(|tok| tok.span());
         let value = seed.deserialize(&mut *self);
+
+        // We've processed the expected member via seed.deserialize.
+        self.pending_member = false;
 
         match &value {
             Ok(_) => {
@@ -770,27 +784,47 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
     where
         V: Visitor<'de>,
     {
-        let mut err = match self.last.as_ref() {
-            Some(token) => Error::new(
-                token.span(),
-                format!("extraneous member `{}`", token),
-            ),
-            // This can't happen -- we need to have read a token in order for
-            // serde to determine that this value will be ignored.
-            None => return Err(InternalError::Unknown),
-        };
+        if !self.pending_member {
+            // If this isn't the direct value of an unexpected key, then just
+            // process the value.
+            self.deserialize_any(visitor)
+        } else {
+            // If we're expecting a member, this is going to be an error that we
+            // want to highlight. We'll identify this error and any error we may
+            // encounter while processing the value.
 
-        // We know this is going to be an error, but parse the value anyways
-        // to see if that *also* produces an error.
-        //
-        // TODO it would be slick to have the span cover the full range of the
-        // item (i.e. not just the key), but Span::join requires nightly.
-        match self.deserialize_any(visitor) {
-            Err(InternalError::Normal(e2)) => err.combine(e2),
-            _ => {}
+            // Save the token corresponding to the member name.
+            let keytok = match self.last.clone() {
+                Some(token) => token,
+                // This can't happen -- we need to have read a token in order
+                // for serde to determine that this value will
+                // be ignored.
+                None => return Err(InternalError::Unknown),
+            };
+
+            // We know this is going to be an error, but we parse the value
+            // anyways to see if that *also* produces an error we can report to
+            // the user.
+            let value = self.deserialize_any(visitor);
+
+            let msg = format!("extraneous member `{}`", &keytok);
+
+            // Create a dummy token stream that contains the token corresponding
+            // to the key and the last token we read. Error::new_spanned() just
+            // looks at the first and last tokens in the stream.
+            let mut ts = TokenStream::new();
+            &ts.extend(vec![keytok, self.previous().unwrap()]);
+
+            // Create an error that underlines key, =, and value.
+            let mut err = Error::new_spanned(ts, msg);
+
+            // Add in the value error if there was one.
+            if let Err(InternalError::Normal(e2)) = value {
+                err.combine(e2);
+            }
+
+            Err(InternalError::Normal(err))
         }
-
-        Err(InternalError::Normal(err))
     }
 
     de_unimp!(deserialize_bytes);
@@ -1493,8 +1527,12 @@ mod tests {
             .into(),
         ) {
             Err(err) => {
-                // TODO there should be two errors here.
-                assert_eq!(err.to_string(), "extraneous member `family`");
+                let errs = err.into_iter().collect::<Vec<_>>();
+                assert_eq!(errs[0].to_string(), "extraneous member `family`");
+                assert_eq!(
+                    errs[1].to_string(),
+                    "expected a value, but found `,`"
+                );
             }
             Ok(_) => panic!("unexpected success"),
         };

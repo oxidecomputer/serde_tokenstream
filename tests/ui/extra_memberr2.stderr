@@ -1,5 +1,0 @@
-error: extraneous member `family`
- --> $DIR/extra_memberr2.rs:6:5
-  |
-6 |     family = ["homer", "marge", "bart", "lisa", "maggie",,]
-  |     ^^^^^^
