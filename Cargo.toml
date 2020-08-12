@@ -1,6 +1,6 @@
 [package]
 name = "serde_tokenstream"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Adam H. Leventhal <ahl@oxide.computer>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -11,11 +11,11 @@ keywords = ["serde", "tokenstream", "proc_macro"]
 categories = ["development-tools::procedural-macro-helpers", "parsing"]
 
 [dependencies]
-proc-macro2  = "1"
-serde = { version = "1", features = ["derive"] }
-syn = { version = "1", features = ["full", "extra-traits"] }
+proc-macro2  = "1.0.19"
+serde = { version = "1.0.115", features = ["derive"] }
+syn = { version = "1.0.38", features = ["full", "extra-traits"] }
 
 [dev-dependencies]
-quote = "1"
+quote = "1.0.7"
 testlib = { path = "testlib" }
-trybuild = "1"
+trybuild = "1.0.32"

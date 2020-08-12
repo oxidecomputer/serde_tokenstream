@@ -253,7 +253,6 @@ impl<'de, 'a> MapAccess<'de> for TokenDe {
     where
         K: serde::de::DeserializeSeed<'de>,
     {
-        println!("next_key_seed {}", type_name::<K>());
         let keytok = match self.input.peek() {
             None => return Ok(None),
             Some(token) => token.clone(),
@@ -293,7 +292,6 @@ impl<'de, 'a> MapAccess<'de> for TokenDe {
     where
         V: DeserializeSeed<'de>,
     {
-        println!("next_value_seed {}", type_name::<V>());
         let valtok = self.input.peek().map(|tok| tok.span());
         let value = seed.deserialize(&mut *self);
 
