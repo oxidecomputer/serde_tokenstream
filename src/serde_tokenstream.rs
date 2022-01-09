@@ -1470,7 +1470,7 @@ mod tests {
     }
 
     #[test]
-    fn text_token_stream_wrapper() {
+    fn test_token_stream_wrapper() {
         #[derive(Debug, Deserialize)]
         struct Stuff {
             pre_tokens: TokenStreamWrapper,
