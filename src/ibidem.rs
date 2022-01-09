@@ -28,6 +28,10 @@ impl std::ops::Deref for TokenStreamWrapper {
     }
 }
 
+// A wrapper around the syn::parse::Parse trait that is Deserializable, albeit
+// only in the context of from_tokenstream(). This extends [TokenStreamWrapper]
+// by further interpreting the TokenStream and guiding the user in the case of
+// parse errors.
 #[derive(Debug)]
 pub struct ParseWrapper<P: syn::parse::Parse>(pub P);
 
