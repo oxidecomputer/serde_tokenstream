@@ -1,4 +1,4 @@
-// Copyright 2020 Oxide Computer Company
+// Copyright 2022 Oxide Computer Company
 
 use core::iter::Peekable;
 use std::{
@@ -12,6 +12,8 @@ use serde::de::{
 };
 use serde::{Deserialize, Deserializer};
 use syn::{ExprLit, Lit};
+
+use crate::ibidem::serialize_token_stream;
 
 /// Alias for `syn::Error`.
 ///
@@ -129,10 +131,8 @@ impl<'de> TokenDe {
     fn next(&mut self) -> Option<TokenTree> {
         let next = self.input.next();
 
-        self.last = std::mem::replace(
-            &mut self.current,
-            next.as_ref().map(|t| t.clone()),
-        );
+        self.last =
+            std::mem::replace(&mut self.current, next.as_ref().cloned());
         next
     }
 
@@ -302,12 +302,11 @@ impl<'de, 'a> MapAccess<'de> for TokenDe {
             Ok(_) => {
                 self.gobble_optional_comma()?;
             }
-            Err(InternalError::NoData(msg)) => match valtok {
-                Some(span) => {
+            Err(InternalError::NoData(msg)) => {
+                if let Some(span) = valtok {
                     return Err(InternalError::Normal(Error::new(span, msg)));
                 }
-                None => (),
-            },
+            }
             Err(_) => (),
         }
 
@@ -425,10 +424,10 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         V: Visitor<'de>,
     {
         match self.next() {
-            Some(TokenTree::Ident(ident)) if ident.to_string() == "true" => {
+            Some(TokenTree::Ident(ident)) if ident == "true" => {
                 visitor.visit_bool(true)
             }
-            Some(TokenTree::Ident(ident)) if ident.to_string() == "false" => {
+            Some(TokenTree::Ident(ident)) if ident == "false" => {
                 visitor.visit_bool(false)
             }
             other => self.deserialize_error(other, "bool"),
@@ -596,12 +595,10 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
     {
         let next = self.next();
 
-        if let Some(token) = &next {
-            if let TokenTree::Group(group) = token {
-                if let Delimiter::Parenthesis = group.delimiter() {
-                    if group.stream().is_empty() {
-                        return visitor.visit_unit();
-                    }
+        if let Some(TokenTree::Group(group)) = &next {
+            if let Delimiter::Parenthesis = group.delimiter() {
+                if group.stream().is_empty() {
+                    return visitor.visit_unit();
                 }
             }
         }
@@ -669,10 +666,10 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
                     TokenDe::new(&group.stream()).deserialize_any(visitor)
                 }
             },
-            Some(TokenTree::Ident(ident)) if ident.to_string() == "true" => {
+            Some(TokenTree::Ident(ident)) if *ident == "true" => {
                 visitor.visit_bool(true)
             }
-            Some(TokenTree::Ident(ident)) if ident.to_string() == "false" => {
+            Some(TokenTree::Ident(ident)) if *ident == "false" => {
                 visitor.visit_bool(false)
             }
             Some(TokenTree::Ident(ident)) => {
@@ -811,7 +808,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
             // to the key and the last token we read. Error::new_spanned() just
             // looks at the first and last tokens in the stream.
             let mut ts = TokenStream::new();
-            &ts.extend(vec![keytok, self.previous().unwrap()]);
+            ts.extend(vec![keytok, self.previous().unwrap()]);
 
             // Create an error that underlines key, =, and value.
             let mut err = Error::new_spanned(ts, msg);
@@ -825,7 +822,40 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         }
     }
 
-    de_unimp!(deserialize_bytes);
+    fn deserialize_bytes<V>(self, visitor: V) -> InternalResult<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let next = self.next();
+
+        // TODO format a spanned error of some sort
+        let mut token = match next {
+            None => todo!(),
+            Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => todo!(),
+            Some(token) => token,
+        };
+
+        // Gather the tokens up to the next ',' or EOF.
+        let mut tokens = Vec::new();
+        loop {
+            tokens.push(token);
+
+            token = match self.input.peek() {
+                None => break,
+                Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
+                    break
+                }
+                Some(_) => self.next().unwrap(),
+            };
+        }
+
+        // Pass the TokenStream into the WrapperVisitor by serializing it into
+        // a byte array. Yes, this is jank.
+        // TODO for ParseWrapper we can get a nice spanned error by inspecting
+        // the error output and correlating it with our tokens.
+        visitor.visit_bytes(&serialize_token_stream(tokens))
+    }
+
     de_unimp!(deserialize_byte_buf);
     de_unimp!(deserialize_unit_struct, _name: &'static str);
     de_unimp!(deserialize_newtype_struct, _name: &'static str);
@@ -834,8 +864,10 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
 
 #[cfg(test)]
 mod tests {
+    use crate::{ibidem::TokenStreamWrapper, ParseWrapper};
+
     use super::*;
-    use quote::quote;
+    use quote::{quote, ToTokens};
     use std::collections::HashMap;
 
     #[derive(Clone, Debug, Deserialize)]
@@ -857,12 +889,9 @@ mod tests {
 
     #[test]
     fn simple_map1() -> Result<()> {
-        let data = from_tokenstream::<MapData>(
-            &quote! {
-                "potato" = potato
-            }
-            .into(),
-        )?;
+        let data = from_tokenstream::<MapData>(&quote! {
+            "potato" = potato
+        })?;
 
         compare_kv(data.get("potato"), "potato");
 
@@ -871,15 +900,12 @@ mod tests {
 
     #[test]
     fn simple_map2() -> Result<()> {
-        let data = from_tokenstream::<MapData>(
-            &quote! {
-                "potato" = potato,
-                lizzie = "lizzie",
-                brickley = brickley,
-                "bug" = "bug"
-            }
-            .into(),
-        )?;
+        let data = from_tokenstream::<MapData>(&quote! {
+            "potato" = potato,
+            lizzie = "lizzie",
+            brickley = brickley,
+            "bug" = "bug"
+        })?;
 
         compare_kv(data.get("potato"), "potato");
         compare_kv(data.get("lizzie"), "lizzie");
@@ -896,12 +922,9 @@ mod tests {
             #[allow(dead_code)]
             potato: String,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                "potato" = potato
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            "potato" = potato
+        }) {
             Err(err) => {
                 assert_eq!(
                     err.to_string(),
@@ -914,12 +937,9 @@ mod tests {
 
     #[test]
     fn just_ident() {
-        match from_tokenstream::<MapData>(
-            &quote! {
-                howdy
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<MapData>(&quote! {
+            howdy
+        }) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "expected `=` following `howdy`")
             }
@@ -929,12 +949,9 @@ mod tests {
 
     #[test]
     fn no_equals() {
-        match from_tokenstream::<MapData>(
-            &quote! {
-                hi there
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<MapData>(&quote! {
+            hi there
+        }) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "expected `=`, but found `there`")
             }
@@ -944,12 +961,9 @@ mod tests {
 
     #[test]
     fn paren_grouping() {
-        match from_tokenstream::<MapData>(
-            &quote! {
-                hi = ()
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<MapData>(&quote! {
+            hi = ()
+        }) {
             Err(msg) => assert_eq!(
                 msg.to_string(),
                 "data did not match any variant of untagged enum MapEntry"
@@ -960,12 +974,9 @@ mod tests {
 
     #[test]
     fn no_value() {
-        match from_tokenstream::<MapData>(
-            &quote! {
-                x =
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<MapData>(&quote! {
+            x =
+        }) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "expected a value following `=`")
             }
@@ -980,12 +991,9 @@ mod tests {
             #[allow(dead_code)]
             x: String,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                x =
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            x =
+        }) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "expected a string following `=`")
             }
@@ -999,12 +1007,9 @@ mod tests {
         struct Test {
             hi: String,
         }
-        let m = from_tokenstream::<Test>(
-            &quote! {
-                hi = there
-            }
-            .into(),
-        )
+        let m = from_tokenstream::<Test>(&quote! {
+            hi = there
+        })
         .unwrap();
 
         assert_eq!(m.hi, "there");
@@ -1016,12 +1021,9 @@ mod tests {
         struct Test {
             message: String,
         }
-        let m = from_tokenstream::<Test>(
-            &quote! {
-                message = "hi there"
-            }
-            .into(),
-        )
+        let m = from_tokenstream::<Test>(&quote! {
+            message = "hi there"
+        })
         .unwrap();
         assert_eq!(m.message, "hi there");
     }
@@ -1031,12 +1033,9 @@ mod tests {
         struct Test {
             hi: String,
         }
-        let m = from_tokenstream::<Test>(
-            &quote! {
-                hi = there,
-            }
-            .into(),
-        )
+        let m = from_tokenstream::<Test>(&quote! {
+            hi = there,
+        })
         .unwrap();
         assert_eq!(m.hi, "there");
     }
@@ -1048,12 +1047,9 @@ mod tests {
             #[allow(dead_code)]
             hi: String,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                hi = there,,
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            hi = there,,
+        }) {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
@@ -1071,12 +1067,9 @@ mod tests {
             #[allow(dead_code)]
             wat: String,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                wat = ?
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            wat = ?
+        }) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "expected a string, but found `?`");
             }
@@ -1091,12 +1084,9 @@ mod tests {
             #[allow(dead_code)]
             the_meaning_of_life_the_universe_and_everything: String,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                the_meaning_of_life_the_universe_and_everything = 42
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            the_meaning_of_life_the_universe_and_everything = 42
+        }) {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
@@ -1114,12 +1104,9 @@ mod tests {
             #[allow(dead_code)]
             a: (),
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                a = 7,
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            a = 7,
+        }) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "expected a unit, but found `7`");
             }
@@ -1129,12 +1116,9 @@ mod tests {
 
     #[test]
     fn bad_map_value() {
-        match from_tokenstream::<MapData>(
-            &quote! {
-                wtf = [ ?! ]
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<MapData>(&quote! {
+            wtf = [ ?! ]
+        }) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "expected a value, but found `?`")
             }
@@ -1149,13 +1133,10 @@ mod tests {
             #[allow(dead_code)]
             a: String,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                b = 42,
-                a = "howdy",
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            b = 42,
+            a = "howdy",
+        }) {
             Err(msg) => assert_eq!(msg.to_string(), "extraneous member `b`"),
             Ok(_) => panic!("unexpected success"),
         }
@@ -1168,13 +1149,10 @@ mod tests {
             #[allow(dead_code)]
             a: String,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                b = ?,
-                a = "howdy",
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            b = ?,
+            a = "howdy",
+        }) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "extraneous member `b`");
             }
@@ -1188,12 +1166,9 @@ mod tests {
         struct Test {
             array: Vec<u32>,
         }
-        let t = from_tokenstream::<Test>(
-            &quote! {
-                array = []
-            }
-            .into(),
-        )
+        let t = from_tokenstream::<Test>(&quote! {
+            array = []
+        })
         .unwrap();
         assert!(t.array.is_empty());
     }
@@ -1205,12 +1180,9 @@ mod tests {
             #[allow(dead_code)]
             array: Vec<u32>,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                array = [1, 2, 3]
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            array = [1, 2, 3]
+        }) {
             Ok(t) => assert_eq!(t.array[0], 1),
             Err(err) => panic!("unexpected failure: {:?}", err),
         }
@@ -1224,12 +1196,9 @@ mod tests {
         }
         #[derive(Deserialize)]
         struct Test2 {}
-        let t = from_tokenstream::<Test>(
-            &quote! {
-                array = [{}]
-            }
-            .into(),
-        )
+        let t = from_tokenstream::<Test>(&quote! {
+            array = [{}]
+        })
         .unwrap();
         assert_eq!(t.array.len(), 1);
     }
@@ -1242,12 +1211,9 @@ mod tests {
         }
         #[derive(Deserialize)]
         struct Test2 {}
-        let t = from_tokenstream::<Test>(
-            &quote! {
-                array = [{}, {},]
-            }
-            .into(),
-        )
+        let t = from_tokenstream::<Test>(&quote! {
+            array = [{}, {},]
+        })
         .unwrap();
         assert_eq!(t.array.len(), 2);
     }
@@ -1261,12 +1227,9 @@ mod tests {
         }
         #[derive(Deserialize)]
         struct Test2 {}
-        match from_tokenstream::<Test>(
-            &quote! {
-                array = [{}<-]
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            array = [{}<-]
+        }) {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
@@ -1279,12 +1242,9 @@ mod tests {
 
     #[test]
     fn bad_array2() {
-        match from_tokenstream::<MapData>(
-            &quote! {
-                array = [{}<-]
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<MapData>(&quote! {
+            array = [{}<-]
+        }) {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
@@ -1304,16 +1264,13 @@ mod tests {
         }
         #[derive(Deserialize)]
         struct Test2 {}
-        match from_tokenstream::<Test>(
-            &quote! {
-                array = {}
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            array = {}
+        }) {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
-                    "expected an array, but found `{}`"
+                    "expected an array, but found `{ }`"
                 );
             }
             Ok(_) => panic!("unexpected success"),
@@ -1322,12 +1279,9 @@ mod tests {
 
     #[test]
     fn bad_array4() {
-        match from_tokenstream::<MapData>(
-            &quote! {
-                array = [,]
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<MapData>(&quote! {
+            array = [,]
+        }) {
             Err(msg) => {
                 assert_eq!(msg.to_string(), "expected a value, but found `,`");
             }
@@ -1346,12 +1300,9 @@ mod tests {
             #[allow(dead_code)]
             foo: Foo,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                foo = Foop
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            foo = Foop
+        }) {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
@@ -1373,12 +1324,9 @@ mod tests {
             #[allow(dead_code)]
             foo: Foo,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                foo =
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            foo =
+        }) {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
@@ -1400,12 +1348,9 @@ mod tests {
             #[allow(dead_code)]
             foo: Foo,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                foo = Foo
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            foo = Foo
+        }) {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
@@ -1428,12 +1373,9 @@ mod tests {
             #[allow(dead_code)]
             foo: Foo,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                foo = Foo
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            foo = Foo
+        }) {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
@@ -1451,12 +1393,9 @@ mod tests {
             #[allow(dead_code)]
             tup: (u32, u32),
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                tup = (1, 2)
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            tup = (1, 2)
+        }) {
             Ok(t) => assert_eq!(t.tup.1, 2),
             Err(err) => panic!("unexpected failure: {:?}", err),
         }
@@ -1482,7 +1421,7 @@ mod tests {
         struct Test {
             s: String,
         }
-        match from_tokenstream::<Test>(&make_null_group().into()) {
+        match from_tokenstream::<Test>(&make_null_group()) {
             Ok(t) => assert_eq!(t.s, "some string"),
             Err(err) => panic!("unexpected failure: {:?}", err),
         }
@@ -1490,7 +1429,7 @@ mod tests {
 
     #[test]
     fn null_group_map() -> Result<()> {
-        let data = from_tokenstream::<MapData>(&make_null_group().into())?;
+        let data = from_tokenstream::<MapData>(&make_null_group())?;
 
         compare_kv(data.get("s"), "some string");
 
@@ -1503,12 +1442,9 @@ mod tests {
         struct Test {
             x: f64,
         }
-        match from_tokenstream::<Test>(
-            &quote! {
-                x = 100
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            x = 100
+        }) {
             Ok(t) => assert_eq!(t.x, 100.0),
             Err(err) => panic!("unexpected failure: {:?}", err),
         };
@@ -1518,12 +1454,9 @@ mod tests {
     fn extra_member_and_bad_value1() {
         #[derive(Deserialize)]
         struct Test {}
-        match from_tokenstream::<Test>(
-            &quote! {
-                family = ["homer", "marge", "bart", "lisa", "maggie",,]
-            }
-            .into(),
-        ) {
+        match from_tokenstream::<Test>(&quote! {
+            family = ["homer", "marge", "bart", "lisa", "maggie",,]
+        }) {
             Err(err) => {
                 let errs = err.into_iter().collect::<Vec<_>>();
                 assert_eq!(errs[0].to_string(), "extraneous member `family`");
@@ -1534,5 +1467,50 @@ mod tests {
             }
             Ok(_) => panic!("unexpected success"),
         };
+    }
+
+    #[test]
+    fn test_token_stream_wrapper() {
+        #[derive(Debug, Deserialize)]
+        struct Stuff {
+            pre_tokens: TokenStreamWrapper,
+            text: String,
+            post_tokens: Option<TokenStreamWrapper>,
+            no_tokens: Option<TokenStreamWrapper>,
+            things: Vec<ParseWrapper<syn::Path>>,
+        }
+
+        let Stuff {
+            pre_tokens,
+            text,
+            post_tokens,
+            no_tokens,
+            things,
+        } = from_tokenstream::<Stuff>(&quote! {
+            text = "howdy",
+            pre_tokens = (|a, b, c, d| { todo!() }),
+            post_tokens = word,
+            things = [ serde::Serialize, JsonSchema ],
+        })
+        .unwrap();
+
+        assert_eq!(
+            pre_tokens.to_string(),
+            quote! { (|a, b, c, d| { todo!() }) }.to_string()
+        );
+        assert_eq!(text, "howdy");
+        assert_eq!(
+            post_tokens.unwrap().to_string(),
+            quote! { word }.to_string()
+        );
+        assert!(no_tokens.is_none());
+        assert_eq!(
+            things[0].to_token_stream().to_string(),
+            quote! { serde::Serialize }.to_string()
+        );
+        assert_eq!(
+            things[1].to_token_stream().to_string(),
+            quote! { JsonSchema }.to_string()
+        );
     }
 }

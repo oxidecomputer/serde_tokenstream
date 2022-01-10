@@ -1,4 +1,4 @@
-// Copyright 2020 Oxide Computer Company
+// Copyright 2022 Oxide Computer Company
 
 //! `serde::Deserializer` implementation for `proc_macro2::TokenStream`. This
 //! is intended for proc_macro builders who want rich configuration in their
@@ -24,7 +24,8 @@
 //!     attr: proc_macro::TokenStream,
 //!     item: proc_macro::TokenStream,
 //! ) -> proc_macro::TokenStream {
-//!     ...
+//!     // ...
+//! # }
 //! ```
 //!
 //! Use `serde_tokenstream` to deserialize `attr` into a structure with the
@@ -48,7 +49,11 @@
 //! # }
 //! ```
 
+mod ibidem;
 mod serde_tokenstream;
+
+pub use crate::ibidem::ParseWrapper;
+pub use crate::ibidem::TokenStreamWrapper;
 pub use crate::serde_tokenstream::from_tokenstream;
 pub use crate::serde_tokenstream::Error;
 pub use crate::serde_tokenstream::Result;
