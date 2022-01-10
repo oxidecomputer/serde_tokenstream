@@ -864,10 +864,10 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
 
 #[cfg(test)]
 mod tests {
-    use crate::ibidem::TokenStreamWrapper;
+    use crate::{ibidem::TokenStreamWrapper, ParseWrapper};
 
     use super::*;
-    use quote::quote;
+    use quote::{quote, ToTokens};
     use std::collections::HashMap;
 
     #[derive(Clone, Debug, Deserialize)]
@@ -1270,7 +1270,7 @@ mod tests {
             Err(msg) => {
                 assert_eq!(
                     msg.to_string(),
-                    "expected an array, but found `{}`"
+                    "expected an array, but found `{ }`"
                 );
             }
             Ok(_) => panic!("unexpected success"),
@@ -1477,6 +1477,7 @@ mod tests {
             text: String,
             post_tokens: Option<TokenStreamWrapper>,
             no_tokens: Option<TokenStreamWrapper>,
+            things: Vec<ParseWrapper<syn::Path>>,
         }
 
         let Stuff {
@@ -1484,16 +1485,18 @@ mod tests {
             text,
             post_tokens,
             no_tokens,
+            things,
         } = from_tokenstream::<Stuff>(&quote! {
             text = "howdy",
-            pre_tokens = || { todo!() },
+            pre_tokens = (|a, b, c, d| { todo!() }),
             post_tokens = word,
+            things = [ serde::Serialize, JsonSchema ],
         })
         .unwrap();
 
         assert_eq!(
             pre_tokens.to_string(),
-            quote! { || { todo!() } }.to_string()
+            quote! { (|a, b, c, d| { todo!() }) }.to_string()
         );
         assert_eq!(text, "howdy");
         assert_eq!(
@@ -1501,5 +1504,13 @@ mod tests {
             quote! { word }.to_string()
         );
         assert!(no_tokens.is_none());
+        assert_eq!(
+            things[0].to_token_stream().to_string(),
+            quote! { serde::Serialize }.to_string()
+        );
+        assert_eq!(
+            things[1].to_token_stream().to_string(),
+            quote! { JsonSchema }.to_string()
+        );
     }
 }
