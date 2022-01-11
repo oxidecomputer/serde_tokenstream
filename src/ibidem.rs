@@ -9,7 +9,13 @@ use serde::{de::Error, de::Visitor, Deserialize};
 /// can be useful, for example, in a macro that generates code where the caller
 /// of that macro might want to augment the generated code.
 #[derive(Debug)]
-pub struct TokenStreamWrapper(pub TokenStream);
+pub struct TokenStreamWrapper(TokenStream);
+
+impl TokenStreamWrapper {
+    pub fn into_inner(self) -> TokenStream {
+        self.0
+    }
+}
 
 impl<'de> Deserialize<'de> for TokenStreamWrapper {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -33,7 +39,13 @@ impl std::ops::Deref for TokenStreamWrapper {
 // by further interpreting the TokenStream and guiding the user in the case of
 // parse errors.
 #[derive(Debug)]
-pub struct ParseWrapper<P: syn::parse::Parse>(pub P);
+pub struct ParseWrapper<P: syn::parse::Parse>(P);
+
+impl<P: syn::parse::Parse> ParseWrapper<P> {
+    pub fn into_inner(self) -> P {
+        self.0
+    }
+}
 
 impl<'de, P: syn::parse::Parse> Deserialize<'de> for ParseWrapper<P> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -49,6 +61,7 @@ impl<'de, P: syn::parse::Parse> Deserialize<'de> for ParseWrapper<P> {
         ))
     }
 }
+
 impl<P: syn::parse::Parse> std::ops::Deref for ParseWrapper<P> {
     type Target = P;
 
