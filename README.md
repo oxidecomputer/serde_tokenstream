@@ -87,6 +87,15 @@ pub fn MyMacro(
 See the `serde` documentation for the full range of controls that can be
 applied to types and their members.
 
+## TokenStream and syn::* values
+
+In some cases, it's useful to pass TokenStream values as parameters to a macro.
+In this case we can use the `TokenStreamWrapper` which is a wrapper around
+`TokenStream` that implements `Deserialize` or `ParseWrapper` which is a
+wrapper around `syn::Parse` that implements `Deserialize`. The latter is useful
+for passing in, for example, a `syn::Path`, or other specific entities from the
+`syn` crate.
+
 ## Error Handling
 
 Note that errors will highlight the problematic portion of consuming code:
