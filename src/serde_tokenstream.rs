@@ -829,10 +829,16 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         let next = self.next();
 
         // TODO format a spanned error of some sort
-        let mut token = match next {
-            None => todo!(),
-            Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => todo!(),
-            Some(token) => token,
+        let mut token = match &next {
+            None => {
+                return self
+                    .deserialize_error(next, "anything but a ',' or EOF")
+            }
+            Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
+                return self
+                    .deserialize_error(next, "anything but a ',' or EOF")
+            }
+            Some(token) => token.clone(),
         };
 
         // Gather the tokens up to the next ',' or EOF.
@@ -1469,13 +1475,45 @@ mod tests {
         };
     }
 
+    #[derive(Debug)]
+    enum ClosureOrPath {
+        Closure(syn::ExprClosure),
+        Path(syn::Path),
+    }
+
+    impl syn::parse::Parse for ClosureOrPath {
+        fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+            let lookahead = input.lookahead1();
+
+            if lookahead.peek(syn::token::Paren) {
+                let group: proc_macro2::Group = input.parse()?;
+                return syn::parse2::<Self>(group.stream());
+            }
+
+            if let Ok(closure) = input.parse::<syn::ExprClosure>() {
+                return Ok(Self::Closure(closure));
+            }
+
+            input.parse::<syn::Path>().map(Self::Path)
+        }
+    }
+
+    impl ClosureOrPath {
+        fn to_token_stream(&self) -> proc_macro2::TokenStream {
+            match self {
+                ClosureOrPath::Closure(c) => c.to_token_stream(),
+                ClosureOrPath::Path(p) => p.to_token_stream(),
+            }
+        }
+    }
+
     #[test]
     fn test_token_stream_wrapper() {
         #[derive(Debug, Deserialize)]
         struct Stuff {
-            pre_tokens: TokenStreamWrapper,
+            pre_tokens: ParseWrapper<ClosureOrPath>,
             text: String,
-            post_tokens: Option<TokenStreamWrapper>,
+            post_tokens: Option<ParseWrapper<ClosureOrPath>>,
             no_tokens: Option<TokenStreamWrapper>,
             things: Vec<ParseWrapper<syn::Path>>,
         }
@@ -1495,12 +1533,12 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            pre_tokens.to_string(),
-            quote! { (|a, b, c, d| { todo!() }) }.to_string()
+            pre_tokens.to_token_stream().to_string(),
+            quote! { |a, b, c, d| { todo!() } }.to_string()
         );
         assert_eq!(text, "howdy");
         assert_eq!(
-            post_tokens.unwrap().to_string(),
+            post_tokens.unwrap().to_token_stream().to_string(),
             quote! { word }.to_string()
         );
         assert!(no_tokens.is_none());

@@ -55,9 +55,8 @@ impl<'de, P: syn::parse::Parse> Deserialize<'de> for ParseWrapper<P> {
         let token_stream = deserializer.deserialize_bytes(WrapperVisitor)?;
 
         Ok(Self(
-            syn::parse2::<P>(token_stream).map_err(|_| {
-                D::Error::custom("TODO: pass through error info")
-            })?,
+            syn::parse2::<P>(token_stream)
+                .map_err(|e| D::Error::custom(&e.to_string()))?,
         ))
     }
 }
