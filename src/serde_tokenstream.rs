@@ -168,18 +168,6 @@ impl<'de> TokenDe {
         }
     }
 
-    fn non_unit_variant<VV>(&self) -> InternalResult<VV> {
-        match &self.current {
-            Some(token) => Err(InternalError::Normal(Error::new(
-                token.span(),
-                "non-unit variants are not currently supported",
-            ))),
-            // This can't happen; we will need to have read a token at
-            // this point.
-            None => Err(InternalError::Unknown),
-        }
-    }
-
     fn deserialize_int<T, VV, F>(&mut self, visit: F) -> InternalResult<VV>
     where
         F: FnOnce(T) -> InternalResult<VV>,
@@ -371,33 +359,82 @@ impl<'de, 'a> VariantAccess<'de> for &mut TokenDe {
         Ok(())
     }
 
-    fn newtype_variant_seed<T>(self, _seed: T) -> InternalResult<T::Value>
+    fn newtype_variant_seed<T>(self, seed: T) -> InternalResult<T::Value>
     where
         T: DeserializeSeed<'de>,
     {
-        self.non_unit_variant()
+        let next = self.next();
+
+        if let Some(TokenTree::Group(group)) = &next {
+            if let Delimiter::Parenthesis = group.delimiter() {
+                return seed.deserialize(&mut TokenDe::new(&group.stream()));
+            }
+        }
+        self.deserialize_error(next, "(")
     }
 
     fn tuple_variant<V>(
         self,
         _len: usize,
-        _visitor: V,
+        visitor: V,
     ) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.non_unit_variant()
+        let next = self.next();
+
+        if let Some(token) = &next {
+            if let TokenTree::Group(group) = token {
+                if let Delimiter::Parenthesis = group.delimiter() {
+                    return match visitor
+                        .visit_seq(TokenDe::new(&group.stream()))
+                    {
+                        Err(InternalError::NoData(msg)) => {
+                            Err(InternalError::Normal(Error::new(
+                                token.span(),
+                                msg,
+                            )))
+                        }
+                        other => other,
+                    };
+                }
+            }
+        }
+
+        self.deserialize_error(next, "(")
     }
 
     fn struct_variant<V>(
         self,
         _fields: &'static [&'static str],
-        _visitor: V,
+        visitor: V,
     ) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.non_unit_variant()
+        let next = self.next();
+
+        if let Some(token) = &next {
+            if let TokenTree::Group(group) = token {
+                if let Delimiter::Brace = group.delimiter() {
+                    // TODO we should pass fields through to the new TokenDe and
+                    // then use that rather than the call to
+                    // deserialize_ignored_any to determine if the
+                    // given field is valid.
+                    match visitor.visit_map(TokenDe::new(&group.stream())) {
+                        Err(InternalError::NoData(msg)) => {
+                            return Err(InternalError::Normal(Error::new(
+                                token.span(),
+                                msg,
+                            )))
+                        }
+                        other => return other,
+                    }
+                }
+            }
+        };
+
+        self.deserialize_error(next, "{")
     }
 }
 
@@ -1358,10 +1395,7 @@ mod tests {
             foo = Foo
         }) {
             Err(msg) => {
-                assert_eq!(
-                    msg.to_string(),
-                    "non-unit variants are not currently supported"
-                );
+                assert_eq!(msg.to_string(), "expected ( following `Foo`");
             }
             Ok(_) => panic!("unexpected success"),
         }
@@ -1383,10 +1417,7 @@ mod tests {
             foo = Foo
         }) {
             Err(msg) => {
-                assert_eq!(
-                    msg.to_string(),
-                    "non-unit variants are not currently supported"
-                );
+                assert_eq!(msg.to_string(), "expected { following `Foo`");
             }
             Ok(_) => panic!("unexpected success"),
         }
@@ -1550,5 +1581,49 @@ mod tests {
             things[1].to_token_stream().to_string(),
             quote! { JsonSchema }.to_string()
         );
+    }
+
+    #[test]
+    fn test_enum() {
+        #![allow(dead_code)]
+
+        #[derive(Debug, Deserialize, PartialEq, Eq)]
+        enum Thing {
+            A,
+            B(String),
+            C(String, String),
+            D { d: String },
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct Things {
+            thing: Thing,
+        }
+
+        let a = from_tokenstream::<Things>(&quote! {
+            thing = A,
+        })
+        .unwrap();
+        assert_eq!(a.thing, Thing::A);
+
+        let b = from_tokenstream::<Things>(&quote! {
+            thing = B("b"),
+        })
+        .unwrap();
+        assert_eq!(b.thing, Thing::B("b".to_string()));
+
+        let c = from_tokenstream::<Things>(&quote! {
+            thing = C("cc", "ccc"),
+        })
+        .unwrap();
+        assert_eq!(c.thing, Thing::C("cc".to_string(), "ccc".to_string()));
+
+        let d = from_tokenstream::<Things>(&quote! {
+            thing = D { d = "d" },
+        })
+        .unwrap();
+        assert_eq!(d.thing, Thing::D {
+            d: "d".to_string()
+        });
     }
 }
