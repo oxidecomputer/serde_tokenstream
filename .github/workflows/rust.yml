@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
     # actions/checkout@v2
-    - uses: actions/checkout@8230315d06ad95c617244d2f265d237a1682d445
+    - uses: actions/checkout@1f9a0c22da41e6ebfa534300ef656657ea2c6707
     - uses: actions-rs/toolchain@88dc2356392166efad76775c878094f4e83ff746
       with:
         toolchain: nightly
@@ -30,7 +30,7 @@ jobs:
         os: [ ubuntu-18.04, windows-2019, macos-10.15 ]
     steps:
     # actions/checkout@v2
-    - uses: actions/checkout@8230315d06ad95c617244d2f265d237a1682d445
+    - uses: actions/checkout@1f9a0c22da41e6ebfa534300ef656657ea2c6707
     - name: Build
       run: cargo build --tests --verbose
     - name: Run tests
