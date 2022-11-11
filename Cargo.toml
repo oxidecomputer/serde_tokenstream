@@ -1,8 +1,8 @@
 [package]
 name = "serde_tokenstream"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Adam H. Leventhal <ahl@oxide.computer>"]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 description = "A serde deserializer for proc-macro TokenStreams"
 repository = "https://github.com/oxidecomputer/serde_tokenstream"
