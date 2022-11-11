@@ -234,7 +234,7 @@ impl Display for InternalError {
     }
 }
 
-impl<'de, 'a> MapAccess<'de> for TokenDe {
+impl<'de> MapAccess<'de> for TokenDe {
     type Error = InternalError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> InternalResult<Option<K::Value>>
@@ -302,7 +302,7 @@ impl<'de, 'a> MapAccess<'de> for TokenDe {
     }
 }
 
-impl<'de, 'a> SeqAccess<'de> for TokenDe {
+impl<'de> SeqAccess<'de> for TokenDe {
     type Error = InternalError;
 
     fn next_element_seed<T>(
@@ -323,7 +323,7 @@ impl<'de, 'a> SeqAccess<'de> for TokenDe {
     }
 }
 
-impl<'de, 'a> EnumAccess<'de> for &mut TokenDe {
+impl<'de> EnumAccess<'de> for &mut TokenDe {
     type Error = InternalError;
     type Variant = Self;
 
@@ -352,7 +352,7 @@ impl<'de, 'a> EnumAccess<'de> for &mut TokenDe {
     }
 }
 
-impl<'de, 'a> VariantAccess<'de> for &mut TokenDe {
+impl<'de> VariantAccess<'de> for &mut TokenDe {
     type Error = InternalError;
 
     fn unit_variant(self) -> InternalResult<()> {
@@ -911,7 +911,7 @@ mod tests {
 
     use super::*;
     use quote::{quote, ToTokens};
-    use std::collections::HashMap;
+    use std::{collections::HashMap, hash::Hash};
 
     #[derive(Clone, Debug, Deserialize)]
     #[serde(untagged)]
@@ -1625,5 +1625,13 @@ mod tests {
         assert_eq!(d.thing, Thing::D {
             d: "d".to_string()
         });
+    }
+
+    // Make sure ParseWrapper<syn::Type> is Hash
+    #[test]
+    fn test_parse_wrapper_hash() {
+        fn _hash_it(h: ParseWrapper<syn::Type>) {
+            h.hash(&mut std::collections::hash_map::DefaultHasher::new())
+        }
     }
 }
