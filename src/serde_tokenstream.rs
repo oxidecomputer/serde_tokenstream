@@ -869,16 +869,20 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         let mut token = match &next {
             None => {
                 return self
-                    .deserialize_error(next, "anything but a ',' or EOF")
+                    .deserialize_error(next, "anything but a ',', '=', or EOF")
             }
             Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
                 return self
-                    .deserialize_error(next, "anything but a ',' or EOF")
+                    .deserialize_error(next, "anything but a ',', '=', or EOF")
+            }
+            Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => {
+                return self
+                    .deserialize_error(next, "anything but a ',', '=', or EOF")
             }
             Some(token) => token.clone(),
         };
 
-        // Gather the tokens up to the next ',' or EOF.
+        // Gather the tokens up to the next ',', '=', or EOF.
         let mut tokens = Vec::new();
         loop {
             tokens.push(token);
@@ -886,6 +890,9 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
             token = match self.input.peek() {
                 None => break,
                 Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
+                    break
+                }
+                Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => {
                     break
                 }
                 Some(_) => self.next().unwrap(),
@@ -911,7 +918,7 @@ mod tests {
 
     use super::*;
     use quote::{quote, ToTokens};
-    use std::{collections::HashMap, hash::Hash};
+    use std::collections::HashMap;
 
     #[derive(Clone, Debug, Deserialize)]
     #[serde(untagged)]
@@ -1557,7 +1564,7 @@ mod tests {
             things,
         } = from_tokenstream::<Stuff>(&quote! {
             text = "howdy",
-            pre_tokens = (|a, b, c, d| { todo!() }),
+            pre_tokens = (|a, b, c, d| { let _ = todo!(); }),
             post_tokens = word,
             things = [ serde::Serialize, JsonSchema ],
         })
@@ -1565,7 +1572,7 @@ mod tests {
 
         assert_eq!(
             pre_tokens.to_token_stream().to_string(),
-            quote! { |a, b, c, d| { todo!() } }.to_string()
+            quote! { |a, b, c, d| { let _ = todo!(); } }.to_string()
         );
         assert_eq!(text, "howdy");
         assert_eq!(
@@ -1630,8 +1637,23 @@ mod tests {
     // Make sure ParseWrapper<syn::Type> is Hash
     #[test]
     fn test_parse_wrapper_hash() {
-        fn _hash_it(h: ParseWrapper<syn::Type>) {
-            h.hash(&mut std::collections::hash_map::DefaultHasher::new())
+        #[derive(Deserialize)]
+        struct Input {
+            #[allow(dead_code)]
+            patch: HashMap<ParseWrapper<syn::Ident>, Value>,
         }
+        #[derive(Deserialize)]
+        struct Value {
+            #[allow(dead_code)]
+            value: String,
+        }
+
+        let _ = from_tokenstream::<Input>(&quote! {
+            patch = {
+                A = { value = "a" },
+                B = { value = "b" },
+            }
+        })
+        .unwrap();
     }
 }
