@@ -152,7 +152,7 @@ be... whatever... `String`s! You can't use `serde_json::Value` as the key in a
 let config = from_tokenstream::<OrderedMap<serde_json::Value, String>>(tokens)?;
 ```
 
-The macro can consume input like this:
+The macro can then be invoked like this:
 
 ```rust
 my_macro!(

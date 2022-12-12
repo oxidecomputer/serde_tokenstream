@@ -81,7 +81,7 @@ where
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum InternalError {
+enum InternalError {
     Normal(Error),
     NoData(String),
     Unknown,
