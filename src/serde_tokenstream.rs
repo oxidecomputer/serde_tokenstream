@@ -1513,7 +1513,6 @@ mod tests {
         };
     }
 
-    #[derive(Debug)]
     enum ClosureOrPath {
         Closure(syn::ExprClosure),
         Path(syn::Path),
@@ -1547,7 +1546,7 @@ mod tests {
 
     #[test]
     fn test_token_stream_wrapper() {
-        #[derive(Debug, Deserialize)]
+        #[derive(Deserialize)]
         struct Stuff {
             pre_tokens: ParseWrapper<ClosureOrPath>,
             text: String,
