@@ -1,4 +1,5 @@
 # `serde_tokenstream`
+
 This Rust crate is intended for use with macros that need bespoke configuration.
 It's implemented as a `serde::Deserializer` that operates on a
 `proc_macro2::TokenSteam` (easily converted from the standard
@@ -6,7 +7,7 @@ It's implemented as a `serde::Deserializer` that operates on a
 
 ## Usage
 
-Say we're building a custom proc macro that you want consumers to use like
+Say we're building an attribute proc macro that you want consumers to use like
 this:
 
 ```rust
@@ -21,6 +22,18 @@ this:
 fn some_func() {
     ...
 }
+```
+
+It's also useful for function-like macros:
+
+```rust
+my_macro!(
+    name = "SNPP",
+    owner = "Hans",
+    layoffs_in_alphabetical_order = [
+        "Simpson, Homer"
+    ]
+);
 ```
 
 The function that implements the proc macro must have two parameters (both of
@@ -63,7 +76,8 @@ enum ConfigDetailsType {
 }
 ```
 
-Now we can parse `attr` into the `Config` struct with `serde_tokenstream::from_tokenstream`:
+Now we can parse `attr` into the `Config` struct with
+`serde_tokenstream::from_tokenstream`:
 
 ```rust
 use proc_macro2::TokenStream;
@@ -87,18 +101,10 @@ pub fn MyMacro(
 See the `serde` documentation for the full range of controls that can be
 applied to types and their members.
 
-## TokenStream and syn::* values
-
-In some cases, it's useful to pass TokenStream values as parameters to a macro.
-In this case we can use the `TokenStreamWrapper` which is a wrapper around
-`TokenStream` that implements `Deserialize` or `ParseWrapper` which is a
-wrapper around `syn::Parse` that implements `Deserialize`. The latter is useful
-for passing in, for example, a `syn::Path`, or other specific entities from the
-`syn` crate.
-
 ## Error Handling
 
-Note that errors will highlight the problematic portion of consuming code:
+Errors indicate the problematic portion of consuming code to assist the macro
+consumer:
 
 ```rust
 #[MyMacro{
@@ -120,4 +126,43 @@ error: unknown variant `Fusion`, expected one of `Coal`, `Fission`, `Hydroelectr
   |
 7 |         kind = Fusion,
   |                ^^^^^^
+```
+
+## TokenStream and syn::* values
+
+In some cases, it's useful to pass TokenStream values as parameters to a macro.
+In this case we can use the `TokenStreamWrapper` which is a wrapper around
+`TokenStream` that implements `Deserialize` or `ParseWrapper` which is a
+wrapper around `syn::Parse` that implements `Deserialize`. The latter is useful
+for passing in, for example, a `syn::Path`, or other specific entities from the
+`syn` crate.
+
+## OrderedMap
+
+You may want to use the map syntax with keys that cannot be used by types such
+as `HashMap` or `BTreeMap` because they don't implement `Hash` or `Ord`. In
+those cases, you can use an `OrderedMap` and extract the pairs as an iterator
+of tuples.
+
+Let's say we we want our "keys" to be `serde_json::Value`s and our value to
+be... whatever... `String`s! You can't use `serde_json::Value` as the key in a
+`HashMap` or `BTreeMap`, but we can for an `OrderedMap`:
+
+```rust
+let config = from_tokenstream::<OrderedMap<serde_json::Value, String>>(tokens)?;
+```
+
+The macro can consume input like this:
+
+```rust
+my_macro!(
+    {
+        "type" = "string",
+        "format" = "uuid",
+    } = "uuid::Uuid",
+    {
+        "type" = "string",
+        "format" = "ip",
+    } = "std::net::IpAddr",
+);
 ```
