@@ -1,8 +1,8 @@
 // Copyright 2022 Oxide Computer Company
 
-//! This is a `serde::Deserializer` implementation for
-//! `proc_macro2::TokenStream`. It is intended for proc_macro builders who want
-//! rich configuration in their custom attributes.
+//! This is a [`serde::Deserializer`] implementation for
+//! [`proc_macro2::TokenStream`]. It is intended for proc_macro builders who
+//! want rich configuration in their custom attributes.
 //!
 //! If you'd like the consumers of your macro use it like this:
 //!
@@ -50,10 +50,12 @@
 //! ```
 
 mod ibidem;
+mod ordered_map;
 mod serde_tokenstream;
 
 pub use crate::ibidem::ParseWrapper;
 pub use crate::ibidem::TokenStreamWrapper;
+pub use crate::ordered_map::OrderedMap;
 pub use crate::serde_tokenstream::from_tokenstream;
 pub use crate::serde_tokenstream::Error;
 pub use crate::serde_tokenstream::Result;

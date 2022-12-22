@@ -1,6 +1,6 @@
 [package]
 name = "serde_tokenstream"
-version = "0.1.5"
+version = "0.1.6-dev"
 authors = ["Adam H. Leventhal <ahl@oxide.computer>"]
 edition = "2021"
 license = "Apache-2.0"
@@ -13,7 +13,7 @@ categories = ["development-tools::procedural-macro-helpers", "parsing"]
 [dependencies]
 proc-macro2  = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-syn = { version = "1.0", features = ["full", "extra-traits"] }
+syn = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
 quote = "1.0"
