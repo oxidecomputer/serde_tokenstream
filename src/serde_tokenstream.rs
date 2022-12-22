@@ -200,12 +200,12 @@ impl<'de> TokenDe {
         if let Some(tt) = &next {
             let parsed =
                 match syn::parse2::<ExprLit>(TokenStream::from(tt.clone())) {
-                    Ok(ExprLit {
-                        lit: Lit::Int(i), ..
-                    }) => i.base10_parse::<T>().ok(),
-                    Ok(ExprLit {
-                        lit: Lit::Float(f), ..
-                    }) => f.base10_parse::<T>().ok(),
+                    Ok(ExprLit { lit: Lit::Int(i), .. }) => {
+                        i.base10_parse::<T>().ok()
+                    }
+                    Ok(ExprLit { lit: Lit::Float(f), .. }) => {
+                        f.base10_parse::<T>().ok()
+                    }
                     _ => None,
                 };
 
@@ -714,30 +714,28 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
             }
             Some(tt @ TokenTree::Literal(_)) => {
                 match syn::parse2::<ExprLit>(TokenStream::from(tt.clone())) {
-                    Ok(ExprLit {
-                        lit: Lit::Str(s), ..
-                    }) => visitor.visit_string(s.value()),
-                    Ok(ExprLit {
-                        lit: Lit::ByteStr(_), ..
-                    }) => todo!("bytestr"),
-                    Ok(ExprLit {
-                        lit: Lit::Byte(_), ..
-                    }) => todo!("byte"),
-                    Ok(ExprLit {
-                        lit: Lit::Char(ch), ..
-                    }) => visitor.visit_char(ch.value()),
-                    Ok(ExprLit {
-                        lit: Lit::Int(i), ..
-                    }) => visitor.visit_u64(i.base10_parse::<u64>().unwrap()),
-                    Ok(ExprLit {
-                        lit: Lit::Float(f), ..
-                    }) => visitor.visit_f64(f.base10_parse::<f64>().unwrap()),
-                    Ok(ExprLit {
-                        lit: Lit::Bool(_), ..
-                    }) => panic!("can't happen; bool is handled elsewhere"),
-                    Ok(ExprLit {
-                        lit: Lit::Verbatim(_), ..
-                    }) => todo!("verbatim"),
+                    Ok(ExprLit { lit: Lit::Str(s), .. }) => {
+                        visitor.visit_string(s.value())
+                    }
+                    Ok(ExprLit { lit: Lit::ByteStr(_), .. }) => {
+                        todo!("bytestr")
+                    }
+                    Ok(ExprLit { lit: Lit::Byte(_), .. }) => todo!("byte"),
+                    Ok(ExprLit { lit: Lit::Char(ch), .. }) => {
+                        visitor.visit_char(ch.value())
+                    }
+                    Ok(ExprLit { lit: Lit::Int(i), .. }) => {
+                        visitor.visit_u64(i.base10_parse::<u64>().unwrap())
+                    }
+                    Ok(ExprLit { lit: Lit::Float(f), .. }) => {
+                        visitor.visit_f64(f.base10_parse::<f64>().unwrap())
+                    }
+                    Ok(ExprLit { lit: Lit::Bool(_), .. }) => {
+                        panic!("can't happen; bool is handled elsewhere")
+                    }
+                    Ok(ExprLit { lit: Lit::Verbatim(_), .. }) => {
+                        todo!("verbatim")
+                    }
                     Err(err) => panic!(
                         "can't happen; must be parseable: {} {}",
                         tt, err
@@ -1449,10 +1447,12 @@ mod tests {
         // If a consumer uses macro_rules! to specify an expression it will be
         // enclosed in a group with the None delimiter -- effectively an
         // invisible grouping. The constructs that case.
-        let group =
-            proc_macro2::Group::new(proc_macro2::Delimiter::None, quote! {
+        let group = proc_macro2::Group::new(
+            proc_macro2::Delimiter::None,
+            quote! {
                 "some string"
-            });
+            },
+        );
 
         quote! {
             s = #group
@@ -1555,19 +1555,14 @@ mod tests {
             things: Vec<ParseWrapper<syn::Path>>,
         }
 
-        let Stuff {
-            pre_tokens,
-            text,
-            post_tokens,
-            no_tokens,
-            things,
-        } = from_tokenstream::<Stuff>(&quote! {
-            text = "howdy",
-            pre_tokens = (|a, b, c, d| { let _ = todo!(); }),
-            post_tokens = word,
-            things = [ serde::Serialize, JsonSchema ],
-        })
-        .unwrap();
+        let Stuff { pre_tokens, text, post_tokens, no_tokens, things } =
+            from_tokenstream::<Stuff>(&quote! {
+                text = "howdy",
+                pre_tokens = (|a, b, c, d| { let _ = todo!(); }),
+                post_tokens = word,
+                things = [ serde::Serialize, JsonSchema ],
+            })
+            .unwrap();
 
         assert_eq!(
             pre_tokens.to_token_stream().to_string(),
@@ -1628,9 +1623,7 @@ mod tests {
             thing = D { d = "d" },
         })
         .unwrap();
-        assert_eq!(d.thing, Thing::D {
-            d: "d".to_string()
-        });
+        assert_eq!(d.thing, Thing::D { d: "d".to_string() });
     }
 
     // Make sure ParseWrapper<syn::Type> is Hash

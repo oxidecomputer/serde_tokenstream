@@ -15,9 +15,7 @@ pub struct OrderedMap<K, V> {
 
 impl<K, V> Default for OrderedMap<K, V> {
     fn default() -> Self {
-        Self {
-            items: Default::default(),
-        }
+        Self { items: Default::default() }
     }
 }
 
@@ -54,9 +52,7 @@ impl<'de, K: Deserialize<'de>, V: Deserialize<'de>> Visitor<'de>
         while let Some(entry) = map.next_entry()? {
             items.push(entry)
         }
-        Ok(OrderedMap {
-            items,
-        })
+        Ok(OrderedMap { items })
     }
 }
 
