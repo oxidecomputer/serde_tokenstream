@@ -13,7 +13,7 @@ jobs:
   check-style:
     runs-on: ubuntu-18.04
     steps:
-      - uses: actions/checkout@3ba5ee6fac7e0e30e2ea884e236f282d3a775891
+      - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
       - name: Report cargo version
         run: cargo --version
       - name: Report rustfmt version
@@ -27,7 +27,7 @@ jobs:
       matrix:
         os: [ ubuntu-18.04, windows-2019, macos-10.15 ]
     steps:
-      - uses: actions/checkout@3ba5ee6fac7e0e30e2ea884e236f282d3a775891
+      - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
       - name: Report cargo version
         run: cargo --version
       - name: Report rustc version
