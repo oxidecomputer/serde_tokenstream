@@ -826,6 +826,12 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
     {
         self.deserialize_int(|value| visitor.visit_i64(value))
     }
+    fn deserialize_i128<V>(self, visitor: V) -> InternalResult<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_int(|value| visitor.visit_i128(value))
+    }
     fn deserialize_u8<V>(self, visitor: V) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
@@ -849,6 +855,12 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         V: Visitor<'de>,
     {
         self.deserialize_int(|value| visitor.visit_u64(value))
+    }
+    fn deserialize_u128<V>(self, visitor: V) -> InternalResult<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_int(|value| visitor.visit_u128(value))
     }
 
     fn deserialize_f32<V>(self, visitor: V) -> InternalResult<V::Value>
@@ -1742,5 +1754,48 @@ mod tests {
             }
         })
         .unwrap();
+    }
+
+    #[test]
+    fn parse_u128() {
+        #[derive(Deserialize)]
+        struct Test {
+            a: u128,
+            b: u128,
+            c: u128,
+        }
+
+        let t = from_tokenstream::<Test>(&quote! {
+            a = 0,
+            b = 18446744073709551616,
+            c = 340282366920938463463374607431768211455,
+        })
+        .unwrap();
+        assert_eq!(t.a, 0);
+        assert_eq!(t.b, 18446744073709551616);
+        assert_eq!(t.c, 340282366920938463463374607431768211455);
+    }
+
+    #[test]
+    fn parse_i128() {
+        #[derive(Deserialize)]
+        struct Test {
+            a: i128,
+            b: i128,
+            c: i128,
+            d: i128,
+        }
+
+        let t = from_tokenstream::<Test>(&quote! {
+            a = -170141183460469231731687303715884105728,
+            b = -9223372036854775809,
+            c = 9223372036854775808,
+            d = 170141183460469231731687303715884105727,
+        })
+        .unwrap();
+        assert_eq!(t.a, -170141183460469231731687303715884105728);
+        assert_eq!(t.b, -9223372036854775809);
+        assert_eq!(t.c, 9223372036854775808);
+        assert_eq!(t.d, 170141183460469231731687303715884105727);
     }
 }
