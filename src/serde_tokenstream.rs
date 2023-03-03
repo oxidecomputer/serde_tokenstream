@@ -168,69 +168,62 @@ impl<'de> TokenDe {
         }
     }
 
-    fn int_value<T>(&self, next: &Option<TokenTree>) -> Option<T>
+    fn deserialize_int<T, VV, F>(&mut self, visit: F) -> InternalResult<VV>
     where
+        F: FnOnce(T) -> InternalResult<VV>,
         T: std::str::FromStr,
         T::Err: Display,
     {
-        if let Some(tt) = next {
+        let next = self.next();
+
+        let mut stream = Vec::new();
+
+        let next_next = match &next {
+            Some(tt @ TokenTree::Punct(p)) if p.as_char() == '-' => {
+                stream.push(tt.clone());
+                self.next()
+            }
+            any => any.clone(),
+        };
+
+        if let Some(tt) = next_next {
+            stream.push(tt);
+
             if let Ok(i) =
-                syn::parse2::<syn::LitInt>(TokenStream::from(tt.clone()))
+                syn::parse2::<syn::LitInt>(stream.into_iter().collect())
             {
                 if let Ok(value) = i.base10_parse::<T>() {
-                    return Some(value);
+                    return visit(value);
                 }
             }
         }
 
-        None
+        self.deserialize_error(next, type_name::<T>())
     }
 
-    fn deserialize_int<T, VV, F>(&mut self, visit: F) -> InternalResult<VV>
+    fn deserialize_float<T, VV, F>(&mut self, visit: F) -> InternalResult<VV>
     where
         F: FnOnce(T) -> InternalResult<VV>,
-        T: std::str::FromStr + std::ops::Neg<Output = T>,
+        T: std::str::FromStr,
         T::Err: Display,
     {
         let next = self.next();
 
-        let (neg, next) = match next {
-            Some(TokenTree::Punct(p)) if p.as_char() == '-' => {
-                (true, self.next())
+        let mut stream = Vec::new();
+
+        let next_next = match &next {
+            Some(tt @ TokenTree::Punct(p)) if p.as_char() == '-' => {
+                stream.push(tt.clone());
+                self.next()
             }
-            any => (false, any),
+            any => any.clone(),
         };
 
-        if let Some(value) = self.int_value::<T>(&next) {
-            visit(if neg { -value } else { value })
-        } else {
-            self.deserialize_error(next, type_name::<T>())
-        }
-    }
+        if let Some(tt) = next_next {
+            stream.push(tt);
 
-    fn deserialize_uint<T, VV, F>(&mut self, visit: F) -> InternalResult<VV>
-    where
-        F: FnOnce(T) -> InternalResult<VV>,
-        T: std::str::FromStr,
-        T::Err: Display,
-    {
-        let next = self.next();
-
-        if let Some(value) = self.int_value::<T>(&next) {
-            visit(value)
-        } else {
-            self.deserialize_error(next, type_name::<T>())
-        }
-    }
-
-    fn float_value<T>(&self, next: &Option<TokenTree>) -> Option<T>
-    where
-        T: std::str::FromStr,
-        T::Err: Display,
-    {
-        if let Some(tt) = &next {
             let parsed =
-                match syn::parse2::<ExprLit>(TokenStream::from(tt.clone())) {
+                match syn::parse2::<ExprLit>(stream.into_iter().collect()) {
                     Ok(ExprLit { lit: Lit::Int(i), .. }) => {
                         i.base10_parse::<T>().ok()
                     }
@@ -241,34 +234,11 @@ impl<'de> TokenDe {
                 };
 
             if let Some(value) = parsed {
-                return Some(value);
+                return visit(value);
             }
         }
 
-        None
-    }
-
-    fn deserialize_float<T, VV, F>(&mut self, visit: F) -> InternalResult<VV>
-    where
-        F: FnOnce(T) -> InternalResult<VV>,
-        T: std::str::FromStr,
-        T: std::str::FromStr + std::ops::Neg<Output = T>,
-        T::Err: Display,
-    {
-        let next = self.next();
-
-        let (neg, next) = match next {
-            Some(TokenTree::Punct(p)) if p.as_char() == '-' => {
-                (true, self.next())
-            }
-            any => (false, any),
-        };
-
-        if let Some(value) = self.float_value::<T>(&next) {
-            visit(if neg { -value } else { value })
-        } else {
-            self.deserialize_error(next, type_name::<T>())
-        }
+        self.deserialize_error(next, type_name::<T>())
     }
 }
 
@@ -799,16 +769,32 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
                 }
             }
 
-            Some(TokenTree::Punct(p)) if p.as_char() == '-' => {
-                let next = self.next();
-
-                if let Some(value) = self.int_value::<i64>(&next) {
-                    visitor.visit_i64(-value)
-                } else if let Some(value) = self.float_value::<f64>(&next) {
-                    visitor.visit_f64(-value)
-                } else {
-                    self.deserialize_error(token, "a value")
+            Some(neg @ TokenTree::Punct(p)) if p.as_char() == '-' => {
+                if let Some(next) = self.next() {
+                    let stream = [neg, &next]
+                        .into_iter()
+                        .cloned()
+                        .collect::<TokenStream>();
+                    match syn::parse2::<ExprLit>(stream) {
+                        Ok(ExprLit { lit: Lit::Int(i), .. }) => {
+                            return visitor.visit_i64(
+                                i.base10_parse::<i64>().or_else(|_| {
+                                    self.deserialize_error(token, "an integer")
+                                })?,
+                            )
+                        }
+                        Ok(ExprLit { lit: Lit::Float(f), .. }) => {
+                            return visitor.visit_f64(
+                                f.base10_parse::<f64>().or_else(|_| {
+                                    self.deserialize_error(token, "a float")
+                                })?,
+                            )
+                        }
+                        _ => (),
+                    }
                 }
+
+                self.deserialize_error(token, "a value")
             }
             Some(TokenTree::Punct(_)) => {
                 self.deserialize_error(token, "a value")
@@ -844,25 +830,25 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
     where
         V: Visitor<'de>,
     {
-        self.deserialize_uint(|value| visitor.visit_u8(value))
+        self.deserialize_int(|value| visitor.visit_u8(value))
     }
     fn deserialize_u16<V>(self, visitor: V) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_uint(|value| visitor.visit_u16(value))
+        self.deserialize_int(|value| visitor.visit_u16(value))
     }
     fn deserialize_u32<V>(self, visitor: V) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_uint(|value| visitor.visit_u32(value))
+        self.deserialize_int(|value| visitor.visit_u32(value))
     }
     fn deserialize_u64<V>(self, visitor: V) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_uint(|value| visitor.visit_u64(value))
+        self.deserialize_int(|value| visitor.visit_u64(value))
     }
 
     fn deserialize_f32<V>(self, visitor: V) -> InternalResult<V::Value>
@@ -1582,24 +1568,24 @@ mod tests {
     }
 
     #[test]
-    fn numbers() {
+    fn test_numbers() {
         #[derive(Deserialize)]
         #[allow(unused)]
         struct Test {
-            pos_i: u32,
-            neg_i: i64,
+            pos_i: u64,
+            neg_i: i32,
             pos_f: f32,
             neg_f: f64,
         }
         let v = from_tokenstream::<Test>(&quote! {
             pos_i = 0x42,
-            neg_i = -1,
+            neg_i = -2147483648,
             pos_f = 1_000,
             neg_f = -10.0,
         })
         .unwrap();
         assert_eq!(v.pos_i, 0x42);
-        assert_eq!(v.neg_i, -1);
+        assert_eq!(v.neg_i, -2147483648);
         assert_eq!(v.pos_f, 1000.0);
         assert_eq!(v.neg_f, -10.0);
 
@@ -1611,13 +1597,13 @@ mod tests {
         }
         let v = from_tokenstream::<FlatTest>(&quote! {
             pos_i = 42,
-            neg_i = -0b1000,
+            neg_i = -2147483648,
             pos_f = 1e11,
             neg_f = -1e101,
         })
         .unwrap();
         assert_eq!(v.test.pos_i, 42);
-        assert_eq!(v.test.neg_i, -8);
+        assert_eq!(v.test.neg_i, -2147483648);
         assert_eq!(v.test.pos_f, 1e11);
         assert_eq!(v.test.neg_f, -1e101);
     }
