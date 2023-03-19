@@ -7,6 +7,7 @@ use std::{
 };
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+use quote::ToTokens;
 use serde::de::{
     DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor,
 };
@@ -741,9 +742,6 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
                     Ok(ExprLit { lit: Lit::Str(s), .. }) => {
                         visitor.visit_string(s.value())
                     }
-                    Ok(ExprLit { lit: Lit::ByteStr(_), .. }) => {
-                        todo!("bytestr")
-                    }
                     Ok(ExprLit { lit: Lit::Byte(_), .. }) => todo!("byte"),
                     Ok(ExprLit { lit: Lit::Char(ch), .. }) => {
                         visitor.visit_char(ch.value())
@@ -758,10 +756,13 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
                             self.deserialize_error(token, "a float")
                         })?),
                     Ok(ExprLit { lit: Lit::Bool(_), .. }) => {
-                        unreachable!("bool is handled elsewhere")
+                        unreachable!("bool is handled elsewhere");
                     }
-                    Ok(ExprLit { lit: Lit::Verbatim(_), .. }) => {
-                        todo!("verbatim")
+                    Ok(expr @ ExprLit { .. }) => {
+                        todo!(
+                            "unhandled expr {}",
+                            expr.to_token_stream().to_string(),
+                        );
                     }
                     Err(err) => {
                         unreachable!("must be parseable: {} {}", tt, err)
