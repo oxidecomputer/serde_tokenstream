@@ -1,4 +1,5 @@
 {
+    "rewrap.wrappingColumn": 79,
     "rust-analyzer.rustfmt.overrideCommand": [
         "rustup",
         "run",

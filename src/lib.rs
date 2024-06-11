@@ -57,5 +57,6 @@ pub use crate::ibidem::ParseWrapper;
 pub use crate::ibidem::TokenStreamWrapper;
 pub use crate::ordered_map::OrderedMap;
 pub use crate::serde_tokenstream::from_tokenstream;
+pub use crate::serde_tokenstream::from_tokenstream_spanned;
 pub use crate::serde_tokenstream::Error;
 pub use crate::serde_tokenstream::Result;
