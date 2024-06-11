@@ -48,6 +48,11 @@
 //! # item
 //! # }
 //! ```
+//!
+//! ## Nested attributes
+//!
+//! For attributes that are nested inside a top-level macro, use the
+//! [`from_tokenstream_spanned`] function. See its help for an example.
 
 mod ibidem;
 mod ordered_map;
