@@ -71,7 +71,17 @@ where
 ///
 /// # Example
 ///
-/// The most common use is with `syn::MetaList` instances.
+/// The most common use is with [`syn::MetaList`] instances. For example, if
+/// your macro is `#[derive(Record)]` and you're invoked like this:
+///
+/// ```rust,ignore
+/// #[derive(Record)]
+/// #[record { worker = "Homer J. Simpson", floor = 7, region = "G" }]
+/// fn test() {}
+/// ```
+///
+/// Then, the `record` attribute inside can be interpreted as a
+/// `syn::MetaList`. With it in hand:
 ///
 /// ```
 /// use syn::parse_quote;
@@ -86,7 +96,8 @@ where
 ///         floor: u32,
 ///         region: String,
 ///     }
-///     // This is a `syn::MetaList` instance on a nested attribute.
+///
+///     // This is the `syn::MetaList` instance above.
 ///     let list: syn::MetaList = parse_quote! {
 ///         record {
 ///             worker = "Homer J. Simpson",
@@ -95,13 +106,14 @@ where
 ///         }
 ///     };
 ///
-///     // Use `from_tokenstream_spanned` to get better span information.
 ///     let rec = from_tokenstream_spanned::<Record>(list.delimiter.span(), &list.tokens)?;
 ///     println!("{} {}{}", rec.worker, rec.floor, rec.region);
 ///     Ok(())
 /// }
-///
 /// ```
+///
+/// If there's an error like a missing field, it will now be reported with the
+/// span of the braces inside the `record` attribute.
 pub fn from_tokenstream_spanned<'a, T>(
     span: &DelimSpan,
     tokens: &'a TokenStream,
