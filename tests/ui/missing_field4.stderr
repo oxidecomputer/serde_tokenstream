@@ -1,0 +1,9 @@
+error: missing field `squeaker`
+  --> tests/ui/missing_field4.rs:7:14
+   |
+7  |       nested = {
+   |  ______________^
+8  | |         gosling = 0.0,
+9  | |         eyas = 0,
+10 | |     }
+   | |_____^

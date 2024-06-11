@@ -6,7 +6,7 @@ use std::{
     fmt::{self, Display},
 };
 
-use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+use proc_macro2::{extra::DelimSpan, Delimiter, Group, TokenStream, TokenTree};
 use quote::ToTokens;
 use serde::de::{
     DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor,
@@ -57,7 +57,80 @@ pub fn from_tokenstream<'a, T>(tokens: &'a TokenStream) -> Result<T>
 where
     T: Deserialize<'a>,
 {
-    let mut deserializer = TokenDe::from_tokenstream(tokens);
+    let deserializer = TokenDe::from_tokenstream(None, tokens);
+    from_tokenstream_impl(deserializer)
+}
+
+/// Deserialize an instance of type T from a TokenStream with data inside,
+/// along with a [`DelimSpan`] for the surrounding braces.
+///
+/// This is useful when parsing an attribute nested inside an outer macro. In
+/// that case, better span information (not just `Span::call_site`) can be
+/// produced.
+///
+/// # Example
+///
+/// The most common use is with [`syn::MetaList`] instances. For example, if
+/// your macro is `#[derive(Record)]` and you're invoked like this:
+///
+/// ```rust,ignore
+/// #[derive(Record)]
+/// #[record { worker = "Homer J. Simpson", floor = 7, region = "G" }]
+/// fn test() {}
+/// ```
+///
+/// Then, the `record` attribute inside can be interpreted as a
+/// `syn::MetaList`. With it in hand:
+///
+/// ```
+/// use syn::parse_quote;
+/// use serde::Deserialize;
+/// use serde_tokenstream::from_tokenstream_spanned;
+/// use serde_tokenstream::Result;
+///
+/// fn main() -> Result<()> {
+///     #[derive(Deserialize)]
+///     struct Record {
+///         worker: String,
+///         floor: u32,
+///         region: String,
+///     }
+///
+///     // This is the `syn::MetaList` instance above.
+///     let list: syn::MetaList = parse_quote! {
+///         record {
+///             worker = "Homer J. Simpson",
+///             floor = 7,
+///             region = "G",
+///         }
+///     };
+///
+///     let rec = from_tokenstream_spanned::<Record>(list.delimiter.span(), &list.tokens)?;
+///     println!("{} {}{}", rec.worker, rec.floor, rec.region);
+///     Ok(())
+/// }
+/// ```
+///
+/// If there's an error like a missing field, it will now be reported with the
+/// span of the braces inside the `record` attribute (whereas
+/// [`from_tokenstream`] lacks the necessary [`Span`] information).
+///
+/// [`Span`]: proc_macro2::Span
+pub fn from_tokenstream_spanned<'a, T>(
+    span: &DelimSpan,
+    tokens: &'a TokenStream,
+) -> Result<T>
+where
+    T: Deserialize<'a>,
+{
+    let deserializer = TokenDe::from_tokenstream(Some(span), tokens);
+    from_tokenstream_impl(deserializer)
+}
+
+fn from_tokenstream_impl<'a, T>(mut deserializer: TokenDe) -> Result<T>
+where
+    T: Deserialize<'a>,
+{
     match T::deserialize(&mut deserializer) {
         // On success, check that there aren't additional, unparsed tokens.
         Ok(result) => match deserializer.next() {
@@ -98,13 +171,20 @@ struct TokenDe {
 }
 
 impl<'de> TokenDe {
-    fn from_tokenstream(input: &'de TokenStream) -> Self {
+    fn from_tokenstream(
+        span: Option<&DelimSpan>,
+        input: &'de TokenStream,
+    ) -> Self {
         // We implicitly start inside a brace-surrounded struct.
         // Constructing a Group allows for more generic handling.
-        TokenDe::new(&TokenStream::from(TokenTree::from(Group::new(
-            Delimiter::Brace,
-            input.clone(),
-        ))))
+        // If there is an error at the top level (such as a missing field) it
+        // will be attributed to the span of the group, which is why we let
+        // users optionally include the span for attribution.
+        let mut group = Group::new(Delimiter::Brace, input.clone());
+        if let Some(span) = span {
+            group.set_span(span.join());
+        }
+        TokenDe::new(&TokenStream::from(TokenTree::from(group)))
     }
 
     fn new(input: &'de TokenStream) -> Self {

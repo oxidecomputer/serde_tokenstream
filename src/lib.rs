@@ -48,6 +48,11 @@
 //! # item
 //! # }
 //! ```
+//!
+//! ## Nested attributes
+//!
+//! For attributes that are nested inside a top-level macro, use the
+//! [`from_tokenstream_spanned`] function. See its help for an example.
 
 mod ibidem;
 mod ordered_map;
@@ -57,5 +62,6 @@ pub use crate::ibidem::ParseWrapper;
 pub use crate::ibidem::TokenStreamWrapper;
 pub use crate::ordered_map::OrderedMap;
 pub use crate::serde_tokenstream::from_tokenstream;
+pub use crate::serde_tokenstream::from_tokenstream_spanned;
 pub use crate::serde_tokenstream::Error;
 pub use crate::serde_tokenstream::Result;

@@ -128,7 +128,52 @@ error: unknown variant `Fusion`, expected one of `Coal`, `Fission`, `Hydroelectr
   |                ^^^^^^
 ```
 
-## TokenStream and syn::* values
+## Nested attributes
+
+For parsing attributes nested inside an outer macro, use
+`from_tokenstream_spanned`. This function provides better span attribution for
+errors at the top level.
+
+The most common use is with `syn::MetaList`. For example, if your macro is a
+derive macro:
+
+```rust
+#[derive(MyRobot)]
+#[robot {
+    name = "Mawhrin-Skel",
+    kind = Drone,
+    planet = "Eä",
+}]
+fn monitor() {
+    ...
+}
+```
+
+Then `robot` can be interpreted as a `syn::MetaList` instance. With that:
+
+```rust
+use serde_tokenstream::from_tokenstream;
+
+#[derive(Deserialize)]
+struct Robot {
+    ...
+}
+
+#[proc_macro_derive(MyRobot, attributes(robot))]
+pub fn my_robot(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let list = /* obtain the `syn::MetaList` from the input */;
+
+    let config = match from_tokenstream_spanned::<Robot>(
+        list.delimiter.span(),
+        &list.tokens
+    ) {
+        Ok(c) => c,
+        Err(err) => return err.to_compile_error().into(),
+    };
+}
+```
+
+## TokenStream and syn::\* values
 
 In some cases, it's useful to pass TokenStream values as parameters to a macro.
 In this case we can use the `TokenStreamWrapper` which is a wrapper around
