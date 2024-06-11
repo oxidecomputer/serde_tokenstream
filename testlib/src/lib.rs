@@ -57,15 +57,14 @@ pub fn outer(
     let annotation_attr =
         item.attrs.iter().find(|attr| attr.path().is_ident("annotation"));
     let annotation_attr = annotation_attr.expect("annotation attribute found");
-    let l = match &annotation_attr.meta {
-        syn::Meta::List(l) => l,
-        _ => {
-            panic!("annotation attribute must be a list")
-        }
+    let syn::Meta::List(list) = &annotation_attr.meta else {
+        panic!("annotation attribute must be a list")
     };
 
-    match from_tokenstream_spanned::<Annotation>(l.delimiter.span(), &l.tokens)
-    {
+    match from_tokenstream_spanned::<Annotation>(
+        list.delimiter.span(),
+        &list.tokens,
+    ) {
         Ok(_) => {
             // Strip the annotation attribute from the function.
             let mut item = item.clone();

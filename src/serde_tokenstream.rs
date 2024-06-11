@@ -61,12 +61,11 @@ where
     from_tokenstream_impl(deserializer)
 }
 
-/// Deserialize an instance of type T from a token stream with data inside,
+/// Deserialize an instance of type T from a TokenStream with data inside,
 /// along with a [`DelimSpan`] for the surrounding braces.
 ///
-/// This is useful with nested attributes inside annotations, where
-/// `serde_tokenstream` is used to parse an attribute inside a top-level macro.
-/// In that case, better span information (not just `Span::call_site`) can be
+/// This is useful when parsing an attribute nested inside an outer macro. In
+/// that case, better span information (not just `Span::call_site`) can be
 /// produced.
 ///
 /// # Example
@@ -113,7 +112,10 @@ where
 /// ```
 ///
 /// If there's an error like a missing field, it will now be reported with the
-/// span of the braces inside the `record` attribute.
+/// span of the braces inside the `record` attribute (whereas
+/// [`from_tokenstream`] lacks the necessary [`Span`] information).
+///
+/// [`Span`]: proc_macro2::Span
 pub fn from_tokenstream_spanned<'a, T>(
     span: &DelimSpan,
     tokens: &'a TokenStream,
@@ -175,6 +177,9 @@ impl<'de> TokenDe {
     ) -> Self {
         // We implicitly start inside a brace-surrounded struct.
         // Constructing a Group allows for more generic handling.
+        // If there is an error at the top level (such as a missing field) it
+        // will be attributed to the span of the group, which is why we let
+        // users optionally include the span for attribution.
         let mut group = Group::new(Delimiter::Brace, input.clone());
         if let Some(span) = span {
             group.set_span(span.join());
