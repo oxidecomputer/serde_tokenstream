@@ -49,13 +49,18 @@ pub fn annotation(
         Ok(attrs) => {
             let item = proc_macro2::TokenStream::from(item);
 
-            // Ensure that the bool_expr really is a boolean expression.
-            let bool_expr = attrs.bool_expr.map(|expr| expr.into_inner());
+            let bool_assertion = attrs.bool_expr.map(|expr| {
+                // Ensure that the bool_expr really is a boolean expression.
+                let expr = expr.into_inner();
+                quote! {
+                    const _: bool = {
+                        #expr
+                    };
+                }
+            });
 
             quote! {
-                const _: bool = {
-                    #bool_expr
-                };
+                #bool_assertion
 
                 #item
             }
