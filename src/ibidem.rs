@@ -81,8 +81,8 @@ impl<P: syn::parse::Parse> std::ops::Deref for ParseWrapper<P> {
 /// interface to signal to the `serde_tokenstream` deserializer that we should
 /// be interpreting the TokenStream directly.
 ///
-/// The signal works via a thread-local storage (TLS) side channel acting as a
-/// stack. When we want to interpret a TokenStream directly:
+/// The signal works via a thread-local storage (TLS) side channel. When we
+/// want to interpret a TokenStream directly:
 ///
 /// 1. First, `TokenStreamWrapper` or `ParseWrapper` calls
 ///    `deserializer.deserialize_bytes(WrapperVisitor)`, assuming that
@@ -91,12 +91,12 @@ impl<P: syn::parse::Parse> std::ops::Deref for ParseWrapper<P> {
 ///    `TokenStream`.
 /// 3. The `serde_tokenstream` deserializer calls `visitor.visit_bytes`, which
 ///    is always the `WrapperVisitor`.
-/// 4. The `WrapperVisitor` deserializer immediately calls `take_wrapper_tokens`
-///    to retrieve the `TokenStream`.
+/// 4. The `WrapperVisitor` deserializer immediately calls
+///    `take_wrapper_tokens` to retrieve the `TokenStream`.
 ///
 /// Previously, we serialized to bytes and later deserialized them, but that
 /// lost span information. Storing the actual tokens directly preserves it, and
-/// probably outweighs the ick of this hack.
+/// this benefit probably outweighs the ick of using TLS/dynamic scoping.
 struct WrapperVisitor;
 
 impl<'de> Visitor<'de> for WrapperVisitor {
