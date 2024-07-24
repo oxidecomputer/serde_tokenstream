@@ -14,7 +14,7 @@ use serde::de::{
 use serde::{Deserialize, Deserializer};
 use syn::{ExprLit, Lit};
 
-use crate::ibidem::serialize_token_stream;
+use crate::ibidem::set_wrapper_tokens;
 
 /// Alias for `syn::Error`.
 ///
@@ -1004,6 +1004,9 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         }
     }
 
+    // This isn't really attempting to deserialize bytes -- it merely acts as a
+    // signal to pass through a TokenStream unperturbed. See the comment on
+    // `WrapperVisitor` in `ibidem.rs` for more information.
     fn deserialize_bytes<V>(self, visitor: V) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
@@ -1044,11 +1047,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
             };
         }
 
-        // Pass the TokenStream into the WrapperVisitor by serializing it into
-        // a byte array. Yes, this is jank.
-        // TODO for ParseWrapper we can get a nice spanned error by inspecting
-        // the error output and correlating it with our tokens.
-        visitor.visit_bytes(&serialize_token_stream(tokens))
+        set_wrapper_tokens(tokens);
+        visitor.visit_bytes(&[])
     }
 
     de_unimp!(deserialize_byte_buf);
