@@ -39,7 +39,7 @@ jobs:
       - name: Build
         run: cargo build --workspace --locked --all-targets --verbose
       - name: Run most tests
-        run: cargo test --workspace --locked --verbose
+        run: cargo test --workspace --locked --verbose --exclude ui-tests
 
   trybuild-tests:
     runs-on: ubuntu-latest
