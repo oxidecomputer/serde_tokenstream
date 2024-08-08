@@ -1,5 +1,7 @@
 // Copyright 2022 Oxide Computer Company
 
+use std::cell::RefCell;
+
 use proc_macro2::{TokenStream, TokenTree};
 use serde::{de::Error, de::Visitor, Deserialize};
 
@@ -69,17 +71,34 @@ impl<P: syn::parse::Parse> std::ops::Deref for ParseWrapper<P> {
     }
 }
 
-/// While it is convenient to be able to "pass through" TokenStreams
-/// unperturbed, or to interpret TokenStreams via syn::parse::Parse.
-/// While serde--wisely--does not permit this kind of unholy communion between
-/// Deserialize and Deserializer, we can skirt around this with the
-/// otherwise-unused deserialize_bytes/visit_bytes interfaces. Since there is
-/// no TokenStream that could reasonably be interpreted as bytes, we use this
-/// interface as a conduit to pass through a serialized form of a portion of
-/// the TokenStream from our Deserializer::deserialize_bytes() and deserialize
-/// it in WrapperVisitor::visit_bytes(). Yes, there is a serializer/deserializer
-/// pair buried *within* the broader deserialization. Gotta spend money to make
-/// money.
+/// We would like to be able to pass `TokenStream`s through unperturbed, but
+/// that isn't directly possible with serde's model, because
+/// serde--wisely--does not permit this kind of unholy communion between
+/// Deserialize and Deserializer.
+///
+/// However, we can skirt around this with the otherwise-unused
+/// deserialize_bytes/visit_bytes interfaces. Since there is no `TokenStream`
+/// that could reasonably be interpreted as bytes, we use this interface to
+/// signal to the `serde_tokenstream` deserializer that we should be
+/// interpreting the TokenStream directly.
+///
+/// The mechanism works via a thread-local storage (TLS) side channel. When we
+/// want to interpret a TokenStream directly:
+///
+/// 1. First, `TokenStreamWrapper` or `ParseWrapper` calls
+///    `deserializer.deserialize_bytes(WrapperVisitor)`, assuming that
+///    `deserializer` is always the `serde_tokenstream` deserializer.
+/// 2. The `serde_tokenstream` deserializer calls `set_wrapper_tokens` with the
+///    `TokenStream`.
+/// 3. The `serde_tokenstream` deserializer calls `visitor.visit_bytes`, which
+///    is always the `WrapperVisitor`.
+/// 4. The `WrapperVisitor` deserializer immediately calls
+///    `take_wrapper_tokens` to retrieve the `TokenStream`.
+///
+/// So, yes: this is ick. However, unlike some alternatives like serializing
+/// TokenStreams to bytes, this approach allows us to retain Span information.
+/// In turn, that allows us to craft very good, targeted errors to guide users
+/// in the case of bad input.
 struct WrapperVisitor;
 
 impl<'de> Visitor<'de> for WrapperVisitor {
@@ -92,26 +111,56 @@ impl<'de> Visitor<'de> for WrapperVisitor {
         formatter.write_str("TokenStream")
     }
 
-    fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+    fn visit_bytes<E>(self, bytes: &[u8]) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        deserialize_token_stream(v)
+        assert!(
+            bytes.is_empty(),
+            "visit_bytes should always be called with an empty slice \
+             (a side channel is used to pass the actual TokenStream;
+             was TokenStreamWrapper or ParseWrapper used outside of a
+             serde_tokenstream context?)"
+        );
+        Ok(take_wrapper_tokens())
     }
 }
 
-/// We turn the tokens into text and return them as bytes.
-pub(crate) fn serialize_token_stream(tokens: Vec<TokenTree>) -> Vec<u8> {
-    tokens.into_iter().collect::<TokenStream>().to_string().bytes().collect()
+thread_local! {
+    // This acts as a side channel to pass information around between
+    // visit_bytes and deserialize_bytes. It's fine...
+    //
+    // Instead of a `Vec<TokenStream>` representing a stack, it's okay to use a
+    // single Option here because we read data back from it immediately after
+    // writing to it. The order of operations is as follows:
+    //
+    // 1. `deserialize_bytes` in `serde_tokenstream.rs` calls
+    //    `set_wrapper_tokens`.
+    // 2. `deserialize_bytes` calls `WrapperVisitor::visit_bytes` immediately
+    //    afterwards.
+    // 3. `visit_bytes` calls `take_wrapper_tokens` to retrieve the tokens.
+    // 4. Only after that does any potential syn parsing of the token stream
+    //    occur.
+    //
+    // Because this set/take sequence is immediate without anything in between,
+    // there's no nesting to be worried about.
+    static WRAPPER_TOKENS: RefCell<Option<TokenStream>> = Default::default();
 }
 
-/// We parse the bytes back into a TokenStream; it would be surprising if this
-/// failed.
-fn deserialize_token_stream<E: serde::de::Error>(
-    v: &[u8],
-) -> Result<TokenStream, E> {
-    String::from_utf8(v.to_vec())
-        .unwrap()
-        .parse()
-        .map_err(|_| E::custom("parse error"))
+pub(crate) fn set_wrapper_tokens(tokens: Vec<TokenTree>) {
+    WRAPPER_TOKENS.with(|cell| {
+        let mut cell = cell.borrow_mut();
+        assert!(cell.is_none(), "set_wrapper_tokens requires TLS to be unset");
+        *cell = Some(tokens.into_iter().collect());
+    });
+}
+
+fn take_wrapper_tokens() -> TokenStream {
+    WRAPPER_TOKENS.with(|cell| {
+        cell.borrow_mut().take().expect(
+            "take_wrapper_tokens requires TLS to be set \
+             (was TokenStreamWrapper or ParseWrapper used
+             outside of a serde_tokenstream context?)",
+        )
+    })
 }

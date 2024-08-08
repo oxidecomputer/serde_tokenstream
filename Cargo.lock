@@ -125,6 +125,7 @@ dependencies = [
  "serde",
  "serde_tokenstream",
  "syn",
+ "trybuild",
 ]
 
 [[package]]

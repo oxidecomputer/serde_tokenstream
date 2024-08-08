@@ -1,3 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    ".",
+    "testlib",
+]
+
 [package]
 name = "serde_tokenstream"
 version = "0.2.1"

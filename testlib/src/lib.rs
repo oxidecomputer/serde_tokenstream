@@ -3,10 +3,12 @@
 //! Simple proc macro consumer of `serde_tokenstream` that we use for testing
 //! various failure cases.
 
+use quote::quote;
 use quote::ToTokens;
 use serde::Deserialize;
 use serde_tokenstream::from_tokenstream;
 use serde_tokenstream::from_tokenstream_spanned;
+use serde_tokenstream::ParseWrapper;
 use syn::parse_macro_input;
 
 #[derive(Deserialize)]
@@ -19,6 +21,7 @@ struct Annotation {
     many: Option<Vec<String>>,
     unit: (),
     tup: (u32, f32),
+    bool_expr: Option<ParseWrapper<syn::Expr>>,
 }
 
 #[derive(Deserialize)]
@@ -43,7 +46,27 @@ pub fn annotation(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     match from_tokenstream::<Annotation>(&attr.into()) {
-        Ok(_) => item,
+        Ok(attrs) => {
+            let item = proc_macro2::TokenStream::from(item);
+
+            let bool_assertion = attrs.bool_expr.map(|expr| {
+                // Ensure that the bool_expr really is a boolean expression.
+                let expr = expr.into_inner();
+                quote! {
+                    const _: bool = {
+                        #expr
+                    };
+                }
+            });
+
+            quote! {
+                #bool_assertion
+
+                #item
+            }
+            .into()
+        }
+
         Err(err) => err.to_compile_error().into(),
     }
 }
