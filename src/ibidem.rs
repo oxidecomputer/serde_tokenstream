@@ -71,17 +71,18 @@ impl<P: syn::parse::Parse> std::ops::Deref for ParseWrapper<P> {
     }
 }
 
-/// While it is convenient to be able to "pass through" TokenStreams
-/// unperturbed, or to interpret TokenStreams via syn::parse::Parse.
+/// We would like to be able to pass `TokenStream`s through unperturbed, but
+/// that isn't directly possible with serde's model, because
+/// serde--wisely--does not permit this kind of unholy communion between
+/// Deserialize and Deserializer.
 ///
-/// While serde--wisely--does not permit this kind of unholy communion between
-/// Deserialize and Deserializer, we can skirt around this with the
-/// otherwise-unused deserialize_bytes/visit_bytes interfaces. Since there is
-/// no TokenStream that could reasonably be interpreted as bytes, we use this
-/// interface to signal to the `serde_tokenstream` deserializer that we should
-/// be interpreting the TokenStream directly.
+/// However, we can skirt around this with the otherwise-unused
+/// deserialize_bytes/visit_bytes interfaces. Since there is no `TokenStream`
+/// that could reasonably be interpreted as bytes, we use this interface to
+/// signal to the `serde_tokenstream` deserializer that we should be
+/// interpreting the TokenStream directly.
 ///
-/// The signal works via a thread-local storage (TLS) side channel. When we
+/// The mechanism works via a thread-local storage (TLS) side channel. When we
 /// want to interpret a TokenStream directly:
 ///
 /// 1. First, `TokenStreamWrapper` or `ParseWrapper` calls
@@ -94,9 +95,10 @@ impl<P: syn::parse::Parse> std::ops::Deref for ParseWrapper<P> {
 /// 4. The `WrapperVisitor` deserializer immediately calls
 ///    `take_wrapper_tokens` to retrieve the `TokenStream`.
 ///
-/// Previously, we serialized to bytes and later deserialized them, but that
-/// lost span information. Storing the actual tokens directly preserves it, and
-/// this benefit probably outweighs the ick of using TLS/dynamic scoping.
+/// So, yes: this is ick. However, unlike some alternatives like serializing
+/// TokenStreams to bytes, this approach allows us to retain Span information.
+/// In turn, that allows us to craft very good, targeted errors to guide users
+/// in the case of bad input.
 struct WrapperVisitor;
 
 impl<'de> Visitor<'de> for WrapperVisitor {
@@ -130,12 +132,13 @@ thread_local! {
     //
     // Instead of a `Vec<TokenStream>` representing a stack, it's okay to use a
     // single Option here because we read data back from it immediately after
-    // pushing it. The order of operations is as follows:
+    // writing to it. The order of operations is as follows:
     //
     // 1. `deserialize_bytes` in `serde_tokenstream.rs` calls
     //    `set_wrapper_tokens`.
-    // 2. It calls `WrapperVisitor::visit_bytes` immediately after
-    // 3. That calls `take_wrapper_tokens` to retrieve the tokens.
+    // 2. `deserialize_bytes` calls `WrapperVisitor::visit_bytes` immediately
+    //    afterwards.
+    // 3. `visit_bytes` calls `take_wrapper_tokens` to retrieve the tokens.
     // 4. Only after that does any potential syn parsing of the token stream
     //    occur.
     //
