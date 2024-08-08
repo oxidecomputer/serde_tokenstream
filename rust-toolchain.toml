@@ -2,9 +2,6 @@
 # occasionally depend on specific compiler output - remain stable
 # for all developers until the toolchain is explicitly advanced.
 # The intent is to keep this updated as new stable versions are relased.
-#
-# While updating this file, please also update the version in the Rust
-# `trybuild-tests` CI job.
 
 [toolchain]
 channel = "1.80.1"
