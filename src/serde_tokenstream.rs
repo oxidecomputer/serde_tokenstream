@@ -1067,6 +1067,7 @@ mod tests {
 
     #[derive(Clone, Debug, Deserialize)]
     #[serde(untagged)]
+    #[allow(dead_code)]
     enum MapEntry {
         Value(String),
         Struct(MapData),
@@ -1535,6 +1536,7 @@ mod tests {
     #[test]
     fn bad_enum3() {
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         enum Foo {
             Foo(u32),
         }

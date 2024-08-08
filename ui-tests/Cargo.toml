@@ -1,0 +1,14 @@
+# These tests are in another crate so they can easily be filtered out by CI
+# that isn't running on the pinned version.
+
+[package]
+name = "ui-tests"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.75"
+
+[dev-dependencies]
+serde_tokenstream = { path = ".." }
+testlib = { path = "../testlib" }
+trybuild = "1.0"

@@ -92,8 +92,6 @@ dependencies = [
  "quote",
  "serde",
  "syn",
- "testlib",
- "trybuild",
 ]
 
 [[package]]
@@ -141,6 +139,15 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "termcolor",
+]
+
+[[package]]
+name = "ui-tests"
+version = "0.1.0"
+dependencies = [
+ "serde_tokenstream",
+ "testlib",
+ "trybuild",
 ]
 
 [[package]]
