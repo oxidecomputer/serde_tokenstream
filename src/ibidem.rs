@@ -5,11 +5,20 @@ use std::cell::RefCell;
 use proc_macro2::{TokenStream, TokenTree};
 use serde::{de::Error, de::Visitor, Deserialize};
 
-/// A Wrapper around proc_macro2::TokenStream that is Deserializable, albeit
-/// only in the context of from_tokenstream(). You can use this if, say, your
-/// macro allows users to pass in Rust tokens as a configuration option. This
-/// can be useful, for example, in a macro that generates code where the caller
-/// of that macro might want to augment the generated code.
+/// A wrapper around [`TokenStream`] that implements [`Deserialize`] in the
+/// context of [`from_tokenstream`].
+///
+/// You can use this if, say, your macro allows users to pass in Rust tokens as
+/// a configuration option. This can be useful, for example, in a macro that
+/// generates code where the caller of that macro might want to augment the
+/// generated code.
+///
+/// # Panics
+///
+/// The [`Deserialize`] implementation for `TokenStreamWrapper` will panic if
+/// it is not used in the context of [`from_tokenstream`].
+///
+/// [`from_tokenstream`]: crate::from_tokenstream
 #[derive(Debug)]
 pub struct TokenStreamWrapper(TokenStream);
 
@@ -36,10 +45,19 @@ impl std::ops::Deref for TokenStreamWrapper {
     }
 }
 
-/// A wrapper around the syn::parse::Parse trait that is Deserializable, albeit
-/// only in the context of from_tokenstream(). This extends
-/// [TokenStreamWrapper] by further interpreting the TokenStream and guiding
-/// the user in the case of parse errors.
+/// A wrapper around `syn`'s [`Parse`] trait that implements [`Deserialize`] in
+/// the context of [`from_tokenstream`].
+///
+/// This extends [`TokenStreamWrapper`] by further interpreting the TokenStream
+/// and guiding the user in the case of parse errors.
+///
+/// # Panics
+///
+/// The [`Deserialize`] implementation for [`TokenStreamWrapper`] will panic if
+/// it is not used in the context of [`from_tokenstream`].
+///
+/// [`Parse`]: syn::parse::Parse
+/// [`from_tokenstream`]: crate::from_tokenstream
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct ParseWrapper<P: syn::parse::Parse>(P);
 
