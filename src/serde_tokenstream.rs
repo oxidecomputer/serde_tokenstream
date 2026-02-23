@@ -1,4 +1,4 @@
-// Copyright 2022 Oxide Computer Company
+// Copyright 2026 Oxide Computer Company
 
 use core::iter::Peekable;
 use std::{
@@ -15,6 +15,7 @@ use serde::{Deserialize, Deserializer};
 use syn::{ExprLit, Lit};
 
 use crate::ibidem::set_wrapper_tokens;
+use crate::ibidem::take_parse_error;
 
 /// Alias for `syn::Error`.
 ///
@@ -328,7 +329,14 @@ impl serde::de::Error for InternalError {
     where
         T: std::fmt::Display,
     {
-        InternalError::NoData(format!("{}", msg))
+        // Check whether a ParseWrapper stored a syn::Error with span
+        // information via the PARSE_ERROR side channel. If so, use it
+        // directly to preserve the span.
+        if let Some(parse_err) = take_parse_error() {
+            InternalError::Normal(parse_err)
+        } else {
+            InternalError::NoData(format!("{}", msg))
+        }
     }
 }
 impl std::error::Error for InternalError {}

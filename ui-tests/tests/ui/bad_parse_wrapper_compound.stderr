@@ -1,0 +1,5 @@
+error: expected bool, but found `"not a bool"`
+  --> tests/ui/bad_parse_wrapper_compound.rs:14:47
+   |
+14 |     painted = { color = { red = true, green = "not a bool", blue = false } }
+   |                                               ^^^^^^^^^^^^

@@ -1,4 +1,4 @@
-// Copyright 2020 Oxide Computer Company
+// Copyright 2026 Oxide Computer Company
 
 //! Simple proc macro consumer of `serde_tokenstream` that we use for testing
 //! various failure cases.
@@ -22,6 +22,7 @@ struct Annotation {
     unit: (),
     tup: (u32, f32),
     bool_expr: Option<ParseWrapper<syn::Expr>>,
+    painted: Option<ParseWrapper<Painted>>,
 }
 
 #[derive(Deserialize)]
@@ -38,6 +39,47 @@ struct Nested {
     squeaker: String,
     eyas: u32,
     gosling: f64,
+}
+
+/// An inline struct used to test span preservation in ParseWrapper.
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct PaintColor {
+    red: bool,
+    green: bool,
+    blue: bool,
+}
+
+/// A compound struct with a hand-written `Parse` impl that internally uses
+/// `serde_tokenstream`. Used to test that `ParseWrapper` preserves span
+/// information from the inner `syn::Error` rather than re-attributing it to the
+/// surrounding group.
+///
+/// A `ParseWrapper` over a compound struct is not normally necessary -- our
+/// case could just as well be `painted: Option<Painted>`. But it is necessary
+/// when a hand-written `Parse` implementation must be provided, such as when
+/// either a scalar value or a compound struct is allowed in a position.
+#[allow(dead_code)]
+struct Painted {
+    color: PaintColor,
+}
+
+impl syn::parse::Parse for Painted {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        #[derive(Deserialize)]
+        struct PaintedHelper {
+            color: PaintColor,
+        }
+
+        let content;
+        let brace_token = syn::braced!(content in input);
+        let stream: proc_macro2::TokenStream = content.parse()?;
+        let inner: PaintedHelper = serde_tokenstream::from_tokenstream_spanned(
+            &brace_token.span,
+            &stream,
+        )?;
+        Ok(Painted { color: inner.color })
+    }
 }
 
 #[proc_macro_attribute]

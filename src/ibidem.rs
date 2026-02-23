@@ -1,4 +1,4 @@
-// Copyright 2022 Oxide Computer Company
+// Copyright 2026 Oxide Computer Company
 
 use std::cell::RefCell;
 
@@ -56,7 +56,14 @@ impl<'de, P: syn::parse::Parse> Deserialize<'de> for ParseWrapper<P> {
     {
         let token_stream = deserializer.deserialize_bytes(WrapperVisitor)?;
 
-        Ok(Self(syn::parse2::<P>(token_stream).map_err(D::Error::custom)?))
+        match syn::parse2::<P>(token_stream) {
+            Ok(parsed) => Ok(Self(parsed)),
+            Err(err) => {
+                let msg = err.to_string();
+                set_parse_error(err);
+                Err(D::Error::custom(msg))
+            }
+        }
     }
 }
 
@@ -142,6 +149,24 @@ thread_local! {
     // Because this set/take sequence is immediate without anything in between,
     // there's no nesting to be worried about.
     static WRAPPER_TOKENS: RefCell<Option<TokenStream>> = Default::default();
+
+    // A second side channel for preserving span information from syn parse
+    // errors through serde's `D::Error::custom` bottleneck.
+    //
+    // When `ParseWrapper::deserialize` calls `syn::parse2` and it fails, the
+    // resulting `syn::Error` carries precise span information. But
+    // `D::Error::custom` only accepts `T: Display`, flattening the error to a
+    // string and losing that span. To preserve it:
+    //
+    // 1. `ParseWrapper::deserialize` stores the `syn::Error` here via
+    //    `set_parse_error`.
+    // 2. `ParseWrapper::deserialize` calls `D::Error::custom(msg)`.
+    // 3. `InternalError::custom` calls `take_parse_error` and, if set,
+    //    returns `InternalError::Normal(syn_error)` instead of
+    //    `InternalError::NoData(msg)`.
+    //
+    // As with `WRAPPER_TOKENS`, the set/take sequence is immediate.
+    static PARSE_ERROR: RefCell<Option<syn::Error>> = Default::default();
 }
 
 pub(crate) fn set_wrapper_tokens(tokens: Vec<TokenTree>) {
@@ -160,4 +185,14 @@ fn take_wrapper_tokens() -> TokenStream {
              outside of a serde_tokenstream context?)",
         )
     })
+}
+
+fn set_parse_error(err: syn::Error) {
+    PARSE_ERROR.with(|cell| {
+        *cell.borrow_mut() = Some(err);
+    });
+}
+
+pub(crate) fn take_parse_error() -> Option<syn::Error> {
+    PARSE_ERROR.with(|cell| cell.borrow_mut().take())
 }
