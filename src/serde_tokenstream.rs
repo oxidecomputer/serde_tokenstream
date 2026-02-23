@@ -27,7 +27,7 @@ pub type Error = syn::Error;
 /// Alias for a Result with the error type serde_tokenstream::Error.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Deserialize an instance of type T from a TokenStream.
+/// Deserialize an instance of type `T` from a [`TokenStream`].
 ///
 /// # Example
 /// ```
@@ -62,8 +62,8 @@ where
     from_tokenstream_impl(deserializer)
 }
 
-/// Deserialize an instance of type T from a TokenStream with data inside,
-/// along with a [`DelimSpan`] for the surrounding braces.
+/// Deserialize an instance of type `T` from a [`TokenStream`] with data
+/// inside, along with a [`DelimSpan`] for the surrounding braces.
 ///
 /// This is useful when parsing an attribute nested inside an outer macro. In
 /// that case, better span information (not just `Span::call_site`) can be

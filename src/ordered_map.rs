@@ -4,11 +4,10 @@ use std::marker::PhantomData;
 
 use serde::{de::Visitor, Deserialize};
 
-/// This is a container for pairs that are deserialized from map syntax
-/// without requiring the keys to be unique. This is useful for types that
-/// don't implement traits such as `Hash` or `Ord` required for map types that
-/// offer efficient lookups. The only mechanism to extract data is via
-/// `into_iter()`.
+/// A container for pairs that are deserialized from map syntax if the keys are
+/// non-unique, or don't implement `Hash` or `Ord`.
+///
+/// To extract data, call `.into_iter()` on it.
 pub struct OrderedMap<K, V> {
     items: Vec<(K, V)>,
 }
