@@ -1024,16 +1024,22 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         // TODO format a spanned error of some sort
         let mut token = match &next {
             None => {
-                return self
-                    .deserialize_error(next, "anything but a ',', '=', or EOF");
+                return self.deserialize_error(
+                    next,
+                    "anything but a ',', '=', or EOF",
+                );
             }
             Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
-                return self
-                    .deserialize_error(next, "anything but a ',', '=', or EOF");
+                return self.deserialize_error(
+                    next,
+                    "anything but a ',', '=', or EOF",
+                );
             }
             Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => {
-                return self
-                    .deserialize_error(next, "anything but a ',', '=', or EOF");
+                return self.deserialize_error(
+                    next,
+                    "anything but a ',', '=', or EOF",
+                );
             }
             Some(token) => token.clone(),
         };
