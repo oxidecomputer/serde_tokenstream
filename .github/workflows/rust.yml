@@ -29,7 +29,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         # Run tests on MSRV and stable, excluding UI tests
-        version: ["1.75.0", "stable"]
+        version: ["1.85.0", "stable"]
     steps:
       - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
       - uses: dtolnay/rust-toolchain@v1
