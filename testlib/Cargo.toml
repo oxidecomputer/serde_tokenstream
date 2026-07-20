@@ -13,7 +13,7 @@ proc-macro2 = "1"
 quote = "1.0"
 serde_tokenstream  = { path = ".." }
 serde = { version = "1", features = ["derive"] }
-syn = "2.0"
+syn = "3.0"
 
 [dev-dependencies]
 trybuild = "1"
