@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 
 use proc_macro2::{TokenStream, TokenTree};
-use serde::{de::Error, de::Visitor, Deserialize};
+use serde::{Deserialize, de::Error, de::Visitor};
 
 /// A wrapper around [`TokenStream`] that implements [`Deserialize`] in the
 /// context of [`from_tokenstream`].
@@ -123,7 +123,7 @@ impl<P: syn::parse::Parse> std::ops::Deref for ParseWrapper<P> {
 /// in the case of bad input.
 struct WrapperVisitor;
 
-impl<'de> Visitor<'de> for WrapperVisitor {
+impl Visitor<'_> for WrapperVisitor {
     type Value = TokenStream;
 
     fn expecting(

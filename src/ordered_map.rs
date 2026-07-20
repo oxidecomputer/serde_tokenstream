@@ -2,7 +2,7 @@
 
 use std::marker::PhantomData;
 
-use serde::{de::Visitor, Deserialize};
+use serde::{Deserialize, de::Visitor};
 
 /// A container for pairs that are deserialized from map syntax if the keys are
 /// non-unique, or don't implement `Hash` or `Ord`.
@@ -70,7 +70,7 @@ mod tests {
     use quote::quote;
     use serde::Deserialize;
 
-    use crate::{from_tokenstream, Result};
+    use crate::{Result, from_tokenstream};
 
     use super::OrderedMap;
 

@@ -6,7 +6,7 @@ use std::{
     fmt::{self, Display},
 };
 
-use proc_macro2::{extra::DelimSpan, Delimiter, Group, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree, extra::DelimSpan};
 use quote::ToTokens;
 use serde::de::{
     DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor,
@@ -372,13 +372,13 @@ impl<'de> MapAccess<'de> for TokenDe {
                     return Err(InternalError::Normal(Error::new(
                         token.span(),
                         format!("expected `=`, but found `{}`", token),
-                    )))
+                    )));
                 }
                 None => {
                     return Err(InternalError::Normal(Error::new(
                         keytok.span(),
                         format!("expected `=` following `{}`", keytok),
-                    )))
+                    )));
                 }
             };
         }
@@ -539,7 +539,7 @@ impl<'de> VariantAccess<'de> for &mut TokenDe {
                             return Err(InternalError::Normal(Error::new(
                                 token.span(),
                                 msg,
-                            )))
+                            )));
                         }
                         other => return other,
                     }
@@ -566,7 +566,7 @@ macro_rules! de_unimp {
     };
 }
 
-impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
+impl<'de> Deserializer<'de> for &mut TokenDe {
     type Error = InternalError;
 
     fn deserialize_bool<V>(self, visitor: V) -> InternalResult<V::Value>
@@ -671,7 +671,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
                             return Err(InternalError::Normal(Error::new(
                                 token.span(),
                                 msg,
-                            )))
+                            )));
                         }
                         other => return other,
                     }
@@ -870,14 +870,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
                                 i.base10_parse::<i64>().or_else(|_| {
                                     self.deserialize_error(token, "an integer")
                                 })?,
-                            )
+                            );
                         }
                         Ok(ExprLit { lit: Lit::Float(f), .. }) => {
                             return visitor.visit_f64(
                                 f.base10_parse::<f64>().or_else(|_| {
                                     self.deserialize_error(token, "a float")
                                 })?,
-                            )
+                            );
                         }
                         _ => (),
                     }
@@ -1024,16 +1024,22 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
         // TODO format a spanned error of some sort
         let mut token = match &next {
             None => {
-                return self
-                    .deserialize_error(next, "anything but a ',', '=', or EOF")
+                return self.deserialize_error(
+                    next,
+                    "anything but a ',', '=', or EOF",
+                );
             }
             Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
-                return self
-                    .deserialize_error(next, "anything but a ',', '=', or EOF")
+                return self.deserialize_error(
+                    next,
+                    "anything but a ',', '=', or EOF",
+                );
             }
             Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => {
-                return self
-                    .deserialize_error(next, "anything but a ',', '=', or EOF")
+                return self.deserialize_error(
+                    next,
+                    "anything but a ',', '=', or EOF",
+                );
             }
             Some(token) => token.clone(),
         };
@@ -1046,10 +1052,10 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
             token = match self.input.peek() {
                 None => break,
                 Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
-                    break
+                    break;
                 }
                 Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => {
-                    break
+                    break;
                 }
                 Some(_) => self.next().unwrap(),
             };
@@ -1067,10 +1073,10 @@ impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ibidem::TokenStreamWrapper, ParseWrapper};
+    use crate::{ParseWrapper, ibidem::TokenStreamWrapper};
 
     use super::*;
-    use quote::{quote, ToTokens};
+    use quote::{ToTokens, quote};
     use std::collections::HashMap;
 
     #[derive(Clone, Debug, Deserialize)]
