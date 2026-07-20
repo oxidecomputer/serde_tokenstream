@@ -566,7 +566,7 @@ macro_rules! de_unimp {
     };
 }
 
-impl<'de, 'a> Deserializer<'de> for &'a mut TokenDe {
+impl<'de> Deserializer<'de> for &mut TokenDe {
     type Error = InternalError;
 
     fn deserialize_bool<V>(self, visitor: V) -> InternalResult<V::Value>

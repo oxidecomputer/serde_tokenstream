@@ -123,7 +123,7 @@ impl<P: syn::parse::Parse> std::ops::Deref for ParseWrapper<P> {
 /// in the case of bad input.
 struct WrapperVisitor;
 
-impl<'de> Visitor<'de> for WrapperVisitor {
+impl Visitor<'_> for WrapperVisitor {
     type Value = TokenStream;
 
     fn expecting(
