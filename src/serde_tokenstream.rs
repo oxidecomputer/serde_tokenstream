@@ -142,11 +142,11 @@ where
             )),
         },
         // Pass through expected errors.
-        Err(InternalError::Normal(err)) => Err(err),
+        Err(InternalError::Spanned(err)) => Err(err),
 
         // Other errors should not be able to reach this point.
-        Err(InternalError::NoData(msg)) => panic!(
-            "Error::NoData should never propagate to the caller: {}",
+        Err(InternalError::Unspanned(msg)) => panic!(
+            "Error::Unspanned should never propagate to the caller: {}",
             msg
         ),
         Err(InternalError::Unknown) => {
@@ -157,8 +157,8 @@ where
 
 #[derive(Clone, Debug)]
 enum InternalError {
-    Normal(Error),
-    NoData(String),
+    Spanned(Error),
+    Unspanned(String),
     Unknown,
 }
 
@@ -203,7 +203,7 @@ impl<'de> TokenDe {
         match self.next() {
             None => Ok(()),
             Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => Ok(()),
-            Some(token) => Err(InternalError::Normal(Error::new(
+            Some(token) => Err(InternalError::Spanned(Error::new(
                 token.span(),
                 format!("expected `,` or nothing, but found `{}`", token),
             ))),
@@ -224,7 +224,7 @@ impl<'de> TokenDe {
 
     fn last_err<T>(&self, what: &str) -> InternalResult<T> {
         match &self.last {
-            Some(token) => Err(InternalError::Normal(Error::new(
+            Some(token) => Err(InternalError::Spanned(Error::new(
                 token.span(),
                 format!("expected {} following `{}`", what, token),
             ))),
@@ -242,7 +242,7 @@ impl<'de> TokenDe {
         what: &str,
     ) -> InternalResult<VV> {
         match next {
-            Some(token) => Err(InternalError::Normal(Error::new(
+            Some(token) => Err(InternalError::Spanned(Error::new(
                 token.span(),
                 format!("expected {}, but found `{}`", what, token),
             ))),
@@ -333,9 +333,9 @@ impl serde::de::Error for InternalError {
         // information via the PARSE_ERROR side channel. If so, use it
         // directly to preserve the span.
         if let Some(parse_err) = take_parse_error() {
-            InternalError::Normal(parse_err)
+            InternalError::Spanned(parse_err)
         } else {
-            InternalError::NoData(format!("{}", msg))
+            InternalError::Unspanned(format!("{}", msg))
         }
     }
 }
@@ -369,13 +369,13 @@ impl<'de> MapAccess<'de> for TokenDe {
                 }
 
                 Some(token) => {
-                    return Err(InternalError::Normal(Error::new(
+                    return Err(InternalError::Spanned(Error::new(
                         token.span(),
                         format!("expected `=`, but found `{}`", token),
                     )));
                 }
                 None => {
-                    return Err(InternalError::Normal(Error::new(
+                    return Err(InternalError::Spanned(Error::new(
                         keytok.span(),
                         format!("expected `=` following `{}`", keytok),
                     )));
@@ -403,9 +403,9 @@ impl<'de> MapAccess<'de> for TokenDe {
             Ok(_) => {
                 self.gobble_optional_comma()?;
             }
-            Err(InternalError::NoData(msg)) => {
+            Err(InternalError::Unspanned(msg)) => {
                 if let Some(span) = valtok {
-                    return Err(InternalError::Normal(Error::new(span, msg)));
+                    return Err(InternalError::Spanned(Error::new(span, msg)));
                 }
             }
             Err(_) => (),
@@ -452,9 +452,9 @@ impl<'de> EnumAccess<'de> for &mut TokenDe {
         match val {
             Ok(v) => Ok((v, self)),
             // If there wan an error from serde, tag it with the current token.
-            Err(InternalError::NoData(msg)) => match &self.current {
+            Err(InternalError::Unspanned(msg)) => match &self.current {
                 Some(token) => {
-                    Err(InternalError::Normal(Error::new(token.span(), msg)))
+                    Err(InternalError::Spanned(Error::new(token.span(), msg)))
                 }
                 // This can't happen; we will need to have read a token at
                 // this point.
@@ -502,8 +502,8 @@ impl<'de> VariantAccess<'de> for &mut TokenDe {
                     return match visitor
                         .visit_seq(TokenDe::new(&group.stream()))
                     {
-                        Err(InternalError::NoData(msg)) => {
-                            Err(InternalError::Normal(Error::new(
+                        Err(InternalError::Unspanned(msg)) => {
+                            Err(InternalError::Spanned(Error::new(
                                 token.span(),
                                 msg,
                             )))
@@ -535,8 +535,8 @@ impl<'de> VariantAccess<'de> for &mut TokenDe {
                     // deserialize_ignored_any to determine if the
                     // given field is valid.
                     match visitor.visit_map(TokenDe::new(&group.stream())) {
-                        Err(InternalError::NoData(msg)) => {
-                            return Err(InternalError::Normal(Error::new(
+                        Err(InternalError::Unspanned(msg)) => {
+                            return Err(InternalError::Spanned(Error::new(
                                 token.span(),
                                 msg,
                             )));
@@ -633,8 +633,8 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
                     return match visitor
                         .visit_seq(TokenDe::new(&group.stream()))
                     {
-                        Err(InternalError::NoData(msg)) => {
-                            Err(InternalError::Normal(Error::new(
+                        Err(InternalError::Unspanned(msg)) => {
+                            Err(InternalError::Spanned(Error::new(
                                 token.span(),
                                 msg,
                             )))
@@ -667,8 +667,8 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
                     // deserialize_ignored_any to determine if the
                     // given field is valid.
                     match visitor.visit_map(TokenDe::new(&group.stream())) {
-                        Err(InternalError::NoData(msg)) => {
-                            return Err(InternalError::Normal(Error::new(
+                        Err(InternalError::Unspanned(msg)) => {
+                            return Err(InternalError::Spanned(Error::new(
                                 token.span(),
                                 msg,
                             )));
@@ -772,8 +772,8 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
                     return match visitor
                         .visit_seq(TokenDe::new(&group.stream()))
                     {
-                        Err(InternalError::NoData(msg)) => {
-                            Err(InternalError::Normal(Error::new(
+                        Err(InternalError::Unspanned(msg)) => {
+                            Err(InternalError::Spanned(Error::new(
                                 token.span(),
                                 msg,
                             )))
@@ -1004,11 +1004,11 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
             let mut err = Error::new_spanned(ts, msg);
 
             // Add in the value error if there was one.
-            if let Err(InternalError::Normal(e2)) = value {
+            if let Err(InternalError::Spanned(e2)) = value {
                 err.combine(e2);
             }
 
-            Err(InternalError::Normal(err))
+            Err(InternalError::Spanned(err))
         }
     }
 
