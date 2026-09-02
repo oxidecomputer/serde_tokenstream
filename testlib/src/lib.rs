@@ -82,6 +82,22 @@ impl syn::parse::Parse for Painted {
     }
 }
 
+/// Used to test error attribution for `#[serde(flatten)]` fields, which serde
+/// deserializes from buffered entries after the map has been consumed.
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct Flattened {
+    outer: u32,
+    #[serde(flatten)]
+    inner: FlattenedInner,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct FlattenedInner {
+    needed: u32,
+}
+
 #[proc_macro_attribute]
 pub fn annotation(
     attr: proc_macro::TokenStream,
@@ -114,6 +130,105 @@ pub fn annotation(
 }
 
 #[proc_macro_attribute]
+pub fn flattened(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<Flattened>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+// Like `outer`, but for a nested `flattened` attribute.
+#[proc_macro_attribute]
+pub fn flattened_outer(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let item = parse_macro_input!(item as syn::ItemFn);
+    let flattened_attr =
+        item.attrs.iter().find(|attr| attr.path().is_ident("flattened"));
+    let flattened_attr = flattened_attr.expect("flattened attribute found");
+    let syn::Meta::List(list) = &flattened_attr.meta else {
+        panic!("flattened attribute must be a list")
+    };
+
+    match from_tokenstream_spanned::<Flattened>(
+        list.delimiter.span(),
+        &list.tokens,
+    ) {
+        Ok(_) => {
+            let mut item = item.clone();
+            item.attrs.retain(|attr| !attr.path().is_ident("flattened"));
+            item.into_token_stream().into()
+        }
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+// Tests that a flatten error inside an array element is attributed to the
+// element rather than the array.
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct FlattenedList {
+    items: Vec<Flattened>,
+}
+
+#[proc_macro_attribute]
+pub fn flattened_list(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<FlattenedList>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+// Fixture to test deny_unknown_fields error attribution.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct Strict {
+    a: u32,
+}
+
+#[proc_macro_attribute]
+pub fn strict(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<Strict>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+// Fixture for a value whose Deserialize impl fails without reading a token.
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct Rejected {
+    #[serde(deserialize_with = "reject")]
+    value: u32,
+}
+
+fn reject<'de, D: serde::Deserializer<'de>>(_: D) -> Result<u32, D::Error> {
+    Err(serde::de::Error::custom("value is always rejected"))
+}
+
+#[proc_macro_attribute]
+pub fn rejected(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<Rejected>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+#[proc_macro_attribute]
 pub fn outer(
     _attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -140,6 +255,116 @@ pub fn outer(
     }
 }
 
+// Used to test that top-level failures in situations where serde does internal
+// buffering are reported properly (or at least as best as possible).
+#[derive(Deserialize)]
+#[serde(untagged)]
+#[allow(dead_code)]
+enum UntaggedConfig {
+    A { a: u32 },
+    B { b: u32 },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind")]
+#[allow(dead_code)]
+enum TaggedConfig {
+    X { x: u32 },
+    Y { y: u32 },
+}
+
+#[proc_macro_attribute]
+pub fn untagged(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<UntaggedConfig>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct UntaggedList {
+    items: Vec<UntaggedConfig>,
+}
+
+#[proc_macro_attribute]
+pub fn untagged_list(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<UntaggedList>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+#[proc_macro_attribute]
+pub fn tagged(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<TaggedConfig>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+// A fixture for try_from errors.
+#[derive(Deserialize)]
+#[serde(try_from = "EvenRaw")]
+#[allow(dead_code)]
+struct Even {
+    n: u32,
+}
+
+#[derive(Deserialize)]
+struct EvenRaw {
+    n: u32,
+}
+
+impl std::convert::TryFrom<EvenRaw> for Even {
+    type Error = String;
+
+    fn try_from(raw: EvenRaw) -> Result<Self, Self::Error> {
+        if raw.n % 2 == 0 {
+            Ok(Even { n: raw.n })
+        } else {
+            Err(format!("{} is odd", raw.n))
+        }
+    }
+}
+
+#[proc_macro_attribute]
+pub fn even(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<Even>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct EvenList {
+    items: Vec<Even>,
+}
+
+#[proc_macro_attribute]
+pub fn even_list(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<EvenList>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
 #[derive(Deserialize)]
 #[allow(dead_code)]
 struct NewtypeVariant {
@@ -150,6 +375,7 @@ struct NewtypeVariant {
 #[allow(dead_code)]
 enum Wrapped {
     Named(String),
+    Even(Even),
 }
 
 #[proc_macro_attribute]

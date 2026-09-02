@@ -1,0 +1,5 @@
+error: 3 is odd
+ --> tests/ui/bad_newtype_variant_value.rs:9:18
+  |
+9 |     value = Even({ n = 3 }),
+  |                  ^^^^^^^^^

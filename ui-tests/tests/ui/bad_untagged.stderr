@@ -1,0 +1,9 @@
+error: data did not match any variant of untagged enum UntaggedConfig
+  --> tests/ui/bad_untagged.rs:9:1
+   |
+9  | / #[untagged {
+10 | |     c = 1,
+11 | | }]
+   | |__^
+   |
+   = note: this error originates in the attribute macro `untagged` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -1,0 +1,8 @@
+error: missing field `needed`
+  --> tests/ui/bad_flatten_spanned.rs:10:13
+   |
+10 |   #[flattened {
+   |  _____________^
+11 | |     outer = 1,
+12 | | }]
+   | |_^

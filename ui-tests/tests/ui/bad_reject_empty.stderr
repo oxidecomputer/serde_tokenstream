@@ -1,0 +1,5 @@
+error: value is always rejected
+ --> tests/ui/bad_reject_empty.rs:9:11
+  |
+9 |     value =
+  |           ^

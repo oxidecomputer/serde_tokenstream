@@ -1,0 +1,10 @@
+error: duplicate field `a`
+  --> tests/ui/bad_duplicate_field.rs:9:1
+   |
+9  | / #[strict {
+10 | |     a = 1,
+11 | |     a = 2,
+12 | | }]
+   | |__^
+   |
+   = note: this error originates in the attribute macro `strict` (in Nightly builds, run with -Z macro-backtrace for more info)

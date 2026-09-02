@@ -1,0 +1,5 @@
+error: 3 is odd
+  --> tests/ui/bad_try_from_element.rs:11:9
+   |
+11 |         { n = 3 },
+   |         ^^^^^^^^^

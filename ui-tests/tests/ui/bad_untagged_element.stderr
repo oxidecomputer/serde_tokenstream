@@ -1,0 +1,5 @@
+error: data did not match any variant of untagged enum UntaggedConfig
+  --> tests/ui/bad_untagged_element.rs:11:9
+   |
+11 |         { c = 1 },
+   |         ^^^^^^^^^

@@ -1,0 +1,5 @@
+error: missing field `needed`
+  --> tests/ui/bad_flatten_element.rs:11:9
+   |
+11 |         { outer = 3 },
+   |         ^^^^^^^^^^^^^
