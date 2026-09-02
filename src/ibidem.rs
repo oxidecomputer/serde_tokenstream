@@ -5,6 +5,8 @@ use std::cell::RefCell;
 use proc_macro2::{TokenStream, TokenTree};
 use serde::{Deserialize, de::Error, de::Visitor};
 
+use crate::serde_tokenstream::spanned_error;
+
 /// A wrapper around [`TokenStream`] that implements [`Deserialize`] in the
 /// context of [`from_tokenstream`].
 ///
@@ -74,7 +76,21 @@ impl<'de, P: syn::parse::Parse> Deserialize<'de> for ParseWrapper<P> {
     {
         let token_stream = deserializer.deserialize_bytes(WrapperVisitor)?;
 
-        match syn::parse2::<P>(token_stream) {
+        let parser = |input: syn::parse::ParseStream<'_>| -> syn::Result<P> {
+            let parsed = P::parse(input)?;
+            // The deserializer hands over every token up to the next `,`, `=`,
+            // or EOF, so anything left after `P` is a stray token. Report such
+            // tokens as errors.
+            if let Some((tt, _)) = input.cursor().token_tree() {
+                return Err(spanned_error(
+                    &tt,
+                    format!("expected `,` or nothing, but found `{tt}`"),
+                ));
+            }
+            Ok(parsed)
+        };
+
+        match syn::parse::Parser::parse2(parser, token_stream) {
             Ok(parsed) => Ok(Self(parsed)),
             Err(err) => {
                 let msg = err.to_string();
