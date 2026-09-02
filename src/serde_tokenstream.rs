@@ -271,6 +271,20 @@ fn flatten_none_groups(stream: TokenStream) -> TokenStream {
         .collect()
 }
 
+/// Returns true if this token tree is an empty `macro_rules!` substitution.
+fn is_empty_substitution(tt: &TokenTree) -> bool {
+    match tt {
+        TokenTree::Group(group) if group.delimiter() == Delimiter::None => {
+            // Recursively check to deal with nested macro invocations.
+            group.stream().into_iter().all(|tt| is_empty_substitution(&tt))
+        }
+        TokenTree::Group(_)
+        | TokenTree::Ident(_)
+        | TokenTree::Punct(_)
+        | TokenTree::Literal(_) => false,
+    }
+}
+
 type InternalResult<T> = std::result::Result<T, InternalError>;
 
 struct TokenDe {
@@ -307,7 +321,24 @@ impl TokenDe {
         }
     }
 
+    // Skip over empty macro_rules substitutions.
+    //
+    // Taking care of them here means that other parts of the code don't need to
+    // worry about them -- so `next` and `peek` never return one, and
+    // `last` and `current` never point at one.
+    fn skip_empty_substitutions(&mut self) {
+        while self.input.peek().is_some_and(is_empty_substitution) {
+            self.input.next();
+        }
+    }
+
+    fn peek(&mut self) -> Option<&TokenTree> {
+        self.skip_empty_substitutions();
+        self.input.peek()
+    }
+
     fn next(&mut self) -> Option<TokenTree> {
+        self.skip_empty_substitutions();
         let next = self.input.next();
 
         self.last =
@@ -348,12 +379,66 @@ impl TokenDe {
         }
     }
 
+    /// Consumes the next token if it is a Delimiter::None group.
+    ///
+    /// These groups occur with declarative macro substitutions.
+    ///
+    /// Every `deserialize_*` method that reads a token (other than
+    /// `deserialize_bytes` which is special) starts by checking this.
+    fn take_transparent(&mut self) -> Option<Group> {
+        let group = match self.peek() {
+            Some(TokenTree::Group(group))
+                if group.delimiter() == Delimiter::None =>
+            {
+                group.clone()
+            }
+            Some(TokenTree::Group(_))
+            | Some(TokenTree::Ident(_))
+            | Some(TokenTree::Punct(_))
+            | Some(TokenTree::Literal(_))
+            | None => return None,
+        };
+        self.next().map(|_| group)
+    }
+
+    /// Deserializes the value obtained from `take_transparent`.
+    fn deserialize_transparent<V, F>(
+        group: &Group,
+        what: &str,
+        deserialize: F,
+    ) -> InternalResult<V>
+    where
+        F: FnOnce(&mut TokenDe) -> InternalResult<V>,
+    {
+        // Flatten nested groups from recursive macro_rules.
+        let stream = flatten_none_groups(group.stream());
+
+        let mut inner = TokenDe::new(group, &stream);
+        let value = deserialize(&mut inner)?;
+
+        match inner.next() {
+            None => Ok(value),
+            Some(_) => Err(InternalError::Spanned(spanned_error(
+                group,
+                format!("expected only {}, but found `{}`", what, group),
+            ))),
+        }
+    }
+
     fn deserialize_int<T, VV, F>(&mut self, visit: F) -> InternalResult<VV>
     where
         F: FnOnce(T) -> InternalResult<VV>,
         T: std::str::FromStr,
         T::Err: Display,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                type_name::<T>(),
+                |inner| inner.deserialize_int(visit),
+            );
+        }
+
         let next = self.next();
 
         let mut stream = Vec::new();
@@ -387,6 +472,14 @@ impl TokenDe {
         T: std::str::FromStr,
         T::Err: Display,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                type_name::<T>(),
+                |inner| inner.deserialize_float(visit),
+            );
+        }
+
         let next = self.next();
 
         let mut stream = Vec::new();
@@ -452,7 +545,7 @@ impl<'de> MapAccess<'de> for TokenDe {
     where
         K: serde::de::DeserializeSeed<'de>,
     {
-        let keytok = match self.input.peek() {
+        let keytok = match self.peek() {
             None => return Ok(None),
             Some(token) => token.clone(),
         };
@@ -494,7 +587,7 @@ impl<'de> MapAccess<'de> for TokenDe {
     where
         V: DeserializeSeed<'de>,
     {
-        let valtok = self.input.peek().cloned();
+        let valtok = self.peek().cloned();
         let value = seed.deserialize(&mut *self);
 
         // We've processed the expected member via seed.deserialize.
@@ -525,7 +618,7 @@ impl<'de> SeqAccess<'de> for TokenDe {
     where
         T: DeserializeSeed<'de>,
     {
-        let eltok = match self.input.peek() {
+        let eltok = match self.peek() {
             None => return Ok(None),
             Some(token) => token.clone(),
         };
@@ -667,6 +760,12 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
     where
         V: Visitor<'de>,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(&group, "bool", |inner| {
+                inner.deserialize_bool(visitor)
+            });
+        }
+
         match self.next() {
             Some(TokenTree::Ident(ident)) if ident == "true" => {
                 visitor.visit_bool(true)
@@ -690,6 +789,14 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
     where
         V: Visitor<'de>,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                "a string",
+                |inner| inner.deserialize_string(visitor),
+            );
+        }
+
         let token = self.next();
         let value = match &token {
             Some(TokenTree::Ident(ident)) => Some(ident.to_string()),
@@ -719,6 +826,14 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
     where
         V: Visitor<'de>,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                "an array",
+                |inner| inner.deserialize_seq(visitor),
+            );
+        }
+
         let next = self.next();
 
         if let Some(TokenTree::Group(group)) = &next {
@@ -732,13 +847,21 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
 
     fn deserialize_struct<V>(
         self,
-        _name: &'static str,
-        _fields: &'static [&'static str],
+        name: &'static str,
+        fields: &'static [&'static str],
         visitor: V,
     ) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                "a struct",
+                |inner| inner.deserialize_struct(name, fields, visitor),
+            );
+        }
+
         let next = self.next();
 
         if let Some(TokenTree::Group(group)) = &next {
@@ -758,6 +881,14 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
     where
         V: Visitor<'de>,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                "a map",
+                |inner| inner.deserialize_map(visitor),
+            );
+        }
+
         let next = self.next();
 
         if let Some(TokenTree::Group(group)) = &next {
@@ -771,13 +902,47 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
 
     fn deserialize_enum<V>(
         self,
-        _name: &'static str,
-        _variants: &'static [&'static str],
+        name: &'static str,
+        variants: &'static [&'static str],
         visitor: V,
     ) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
     {
+        // Do the transparent business here rather than in `deserialize_identifier`.
+        //
+        // For example, with an enum `Kind { A, B(u32) }` and a declarative
+        // macro that forwards an expression into the attribute:
+        //
+        //     macro_rules! wrap {
+        //         ($k:expr) => {
+        //             #[annotation { kind = $k }]
+        //             fn test() {}
+        //         };
+        //     }
+        //
+        //     wrap!(B(4));
+        //
+        // the value corresponding to `kind` is a single `Delimiter::None` group
+        // containing two token trees, `B` and `(4)`:
+        //
+        //     kind = ⟨B (4)⟩
+        //
+        // When deserializing an enum, we would read the variant name via
+        // `deserialize_identifier`, and then the payload via
+        // `newtype_variant_seed`. Unwrapping the group here lets both reads
+        // happen over here, so the trailing-token check sees nothing left over.
+        // If the group were unwrapped in `deserialize_identifier` instead, only
+        // `B` would be read from inside it and `(4)` would be rejected as a
+        // stray token.
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                &format!("a variant of `{}`", name),
+                |inner| inner.deserialize_enum(name, variants, visitor),
+            );
+        }
+
         visitor.visit_enum(self)
     }
 
@@ -785,6 +950,14 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
     where
         V: Visitor<'de>,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                "an identifier",
+                |inner| inner.deserialize_identifier(visitor),
+            );
+        }
+
         let next = self.next();
 
         if let Some(ident @ TokenTree::Ident(_)) = next {
@@ -798,6 +971,14 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
     where
         V: Visitor<'de>,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                "a char",
+                |inner| inner.deserialize_char(visitor),
+            );
+        }
+
         let next = self.next();
 
         if let Some(tt) = &next {
@@ -815,6 +996,14 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
     where
         V: Visitor<'de>,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                "a unit",
+                |inner| inner.deserialize_unit(visitor),
+            );
+        }
+
         let next = self.next();
 
         if let Some(TokenTree::Group(group)) = &next {
@@ -830,12 +1019,20 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
 
     fn deserialize_tuple<V>(
         self,
-        _len: usize,
+        len: usize,
         visitor: V,
     ) -> InternalResult<V::Value>
     where
         V: Visitor<'de>,
     {
+        if let Some(group) = self.take_transparent() {
+            return TokenDe::deserialize_transparent(
+                &group,
+                "a tuple",
+                |inner| inner.deserialize_tuple(len, visitor),
+            );
+        }
+
         let next = self.next();
 
         if let Some(TokenTree::Group(group)) = &next {
@@ -872,8 +1069,11 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
                 }
                 // A None delimiter occurs for a macro_rules! substitution. We
                 // can simply descend into those tokens.
-                Delimiter::None => TokenDe::new(group, &group.stream())
-                    .deserialize_any(visitor),
+                Delimiter::None => TokenDe::deserialize_transparent(
+                    group,
+                    "a value",
+                    |inner| inner.deserialize_any(visitor),
+                ),
             },
             Some(TokenTree::Ident(ident)) if *ident == "true" => {
                 visitor.visit_bool(true)
@@ -1099,7 +1299,7 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
         loop {
             tokens.push(token);
 
-            token = match self.input.peek() {
+            token = match self.peek() {
                 None => break,
                 Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
                     break;
@@ -1944,5 +2144,175 @@ mod tests {
         assert_eq!(t.b, -9223372036854775809);
         assert_eq!(t.c, 9223372036854775808);
         assert_eq!(t.d, 170141183460469231731687303715884105727);
+    }
+
+    /// Builds a Delimiter::None group, emulating what rustc does for
+    /// macro_rules substitutions.
+    fn none_group(inner: TokenStream) -> TokenTree {
+        TokenTree::Group(Group::new(Delimiter::None, inner))
+    }
+
+    #[test]
+    fn test_none_group_nested() {
+        #[derive(Deserialize, Debug)]
+        struct Test {
+            s: String,
+        }
+
+        let nested = |inner: TokenStream| {
+            none_group(TokenStream::from(none_group(inner)))
+        };
+
+        let mut tokens = quote! { s = };
+        tokens.extend([nested(quote! { hello })]);
+        assert_eq!(from_tokenstream::<Test>(&tokens).unwrap().s, "hello");
+
+        let mut tokens = quote! { s = };
+        tokens.extend([nested(quote! {})]);
+        assert_eq!(
+            from_tokenstream::<Test>(&tokens).unwrap_err().to_string(),
+            "expected a string following `=`"
+        );
+
+        let mut tokens = quote! { s = };
+        tokens.extend([nested(quote! { foo::bar })]);
+        assert_eq!(
+            from_tokenstream::<Test>(&tokens).unwrap_err().to_string(),
+            "expected only a string, but found `foo :: bar`"
+        );
+    }
+
+    #[test]
+    fn test_none_group_any() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        #[serde(untagged)]
+        enum Value {
+            S(String),
+            N(u32),
+        }
+
+        #[derive(Deserialize, Debug)]
+        struct Test {
+            v: Value,
+        }
+
+        // A single value is transparent.
+        let mut tokens = quote! { v = };
+        tokens.extend([none_group(quote! { hello })]);
+        assert_eq!(
+            from_tokenstream::<Test>(&tokens).unwrap().v,
+            Value::S("hello".to_string())
+        );
+        let mut tokens = quote! { v = };
+        tokens.extend([none_group(quote! { 5 })]);
+        assert_eq!(from_tokenstream::<Test>(&tokens).unwrap().v, Value::N(5));
+
+        // An empty group is a missing value.
+        let mut tokens = quote! { v = };
+        tokens.extend([none_group(quote! {})]);
+        assert_eq!(
+            from_tokenstream::<Test>(&tokens).unwrap_err().to_string(),
+            "expected a value following `=`"
+        );
+
+        // More than one value is an error (don't just truncate it to the
+        // first!)
+        let mut tokens = quote! { v = };
+        tokens.extend([none_group(quote! { foo::bar })]);
+        assert_eq!(
+            from_tokenstream::<Test>(&tokens).unwrap_err().to_string(),
+            "expected only a value, but found `foo :: bar`"
+        );
+    }
+
+    #[test]
+    fn test_none_group_kinds() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Inner {
+            x: u32,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Kind {
+            A,
+            B(u32),
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Test {
+            b: bool,
+            n: i64,
+            f: f32,
+            c: char,
+            u: (),
+            t: (u32, bool),
+            v: Vec<u32>,
+            s: Inner,
+            k: Kind,
+            m: std::collections::BTreeMap<String, u32>,
+            o: Option<String>,
+        }
+
+        let mut tokens = TokenStream::new();
+        for (key, value) in [
+            ("b", quote! { true }),
+            ("n", quote! { -5 }),
+            ("f", quote! { 1.5 }),
+            ("c", quote! { 'c' }),
+            ("u", quote! { () }),
+            ("t", quote! { (1, false) }),
+            ("v", quote! { [1, 2] }),
+            ("s", quote! { { x = 3 } }),
+            ("k", quote! { B(4) }),
+            ("m", quote! { { a = 1 } }),
+            ("o", quote! { "some" }),
+        ] {
+            let key =
+                proc_macro2::Ident::new(key, proc_macro2::Span::call_site());
+            tokens
+                .extend([none_group(TokenStream::from(TokenTree::Ident(key)))]);
+            tokens.extend(quote! { = });
+            tokens.extend([none_group(value)]);
+            tokens.extend(quote! { , });
+        }
+        let test = from_tokenstream::<Test>(&tokens).unwrap();
+        assert_eq!(
+            test,
+            Test {
+                b: true,
+                n: -5,
+                f: 1.5,
+                c: 'c',
+                u: (),
+                t: (1, false),
+                v: vec![1, 2],
+                s: Inner { x: 3 },
+                k: Kind::B(4),
+                m: [("a".to_string(), 1)].into_iter().collect(),
+                o: Some("some".to_string()),
+            }
+        );
+
+        #[derive(Deserialize, Debug)]
+        struct Just {
+            k: Kind,
+        }
+
+        let mut tokens = quote! { k = };
+        tokens.extend([none_group(quote! { A })]);
+        assert_eq!(from_tokenstream::<Just>(&tokens).unwrap().k, Kind::A);
+
+        let mut tokens = quote! { k = };
+        tokens.extend([none_group(quote! {})]);
+        assert_eq!(
+            from_tokenstream::<Just>(&tokens).unwrap_err().to_string(),
+            "expected an identifier following `=`"
+        );
+        let mut tokens = quote! { k = };
+        tokens.extend([none_group(quote! { A B })]);
+        assert_eq!(
+            from_tokenstream::<Just>(&tokens).unwrap_err().to_string(),
+            "expected only a variant of `Kind`, but found `A B`"
+        );
     }
 }

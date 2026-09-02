@@ -1,0 +1,10 @@
+error: expected a string, but found `1`
+  --> tests/ui/parse_wrapper_from_macro_rules_empty.rs:16:28
+   |
+16 |             maybe_string = 1,
+   |                            ^
+...
+22 | wrap!(,);
+   | -------- in this macro invocation
+   |
+   = note: this error originates in the macro `wrap` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -1,0 +1,10 @@
+error: expected a value, but found `,`
+  --> tests/ui/bad_token_stream_wrapper_from_macro_rules_empty.rs:11:24
+   |
+11 |             tokens = $v,
+   |                        ^
+...
+17 | wrap!(,);
+   | -------- in this macro invocation
+   |
+   = note: this error originates in the macro `wrap` (in Nightly builds, run with -Z macro-backtrace for more info)
