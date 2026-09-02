@@ -65,3 +65,4 @@ pub use crate::serde_tokenstream::Error;
 pub use crate::serde_tokenstream::Result;
 pub use crate::serde_tokenstream::from_tokenstream;
 pub use crate::serde_tokenstream::from_tokenstream_spanned;
+pub use crate::serde_tokenstream::spanned_error;

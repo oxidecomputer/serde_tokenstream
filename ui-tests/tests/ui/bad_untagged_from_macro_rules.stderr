@@ -1,0 +1,5 @@
+error: data did not match any variant of untagged enum UntaggedConfig
+  --> tests/ui/bad_untagged_from_macro_rules.rs:17:7
+   |
+17 | wrap!({ c = 1 });
+   |       ^^^^^^^^^
