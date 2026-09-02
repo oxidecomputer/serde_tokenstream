@@ -1,0 +1,5 @@
+error: expected a value, but found `,`
+  --> tests/ui/bad_parse_wrapper_missing.rs:13:17
+   |
+13 |     bool_expr = ,
+   |                 ^

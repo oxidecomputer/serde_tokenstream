@@ -1,0 +1,5 @@
+error: expected a value following `=`
+  --> tests/ui/bad_parse_wrapper_missing_eof.rs:13:15
+   |
+13 |     bool_expr =
+   |               ^
