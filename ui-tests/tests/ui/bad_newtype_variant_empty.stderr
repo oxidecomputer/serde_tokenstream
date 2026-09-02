@@ -1,0 +1,5 @@
+error: expected a string inside `()`
+ --> tests/ui/bad_newtype_variant_empty.rs:9:18
+  |
+9 |     value = Named(),
+  |                  ^^
