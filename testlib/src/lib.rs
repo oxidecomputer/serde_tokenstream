@@ -9,6 +9,7 @@ use serde::Deserialize;
 use serde_tokenstream::from_tokenstream;
 use serde_tokenstream::from_tokenstream_spanned;
 use serde_tokenstream::ParseWrapper;
+use serde_tokenstream::SpannedString;
 use syn::parse_macro_input;
 
 #[derive(Deserialize)]
@@ -23,6 +24,15 @@ struct Annotation {
     tup: (u32, f32),
     bool_expr: Option<ParseWrapper<syn::Expr>>,
     painted: Option<ParseWrapper<Painted>>,
+    /// A value that must be a valid identifier.
+    ///
+    /// Used to test `SpannedString` span attribution.
+    ident: Option<ParseWrapper<SpannedString>>,
+    /// A compound `Parse` type containing `SpannedString` values.
+    ///
+    /// Used to test that `SpannedString` composes, and that errors land on the
+    /// correct value.
+    pair: Option<ParseWrapper<KeyValue>>,
 }
 
 #[derive(Deserialize)]
@@ -82,6 +92,21 @@ impl syn::parse::Parse for Painted {
     }
 }
 
+#[allow(dead_code)]
+struct KeyValue {
+    key: SpannedString,
+    value: SpannedString,
+}
+
+impl syn::parse::Parse for KeyValue {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let key = input.parse()?;
+        let _: syn::Token![:] = input.parse()?;
+        let value = input.parse()?;
+        Ok(KeyValue { key, value })
+    }
+}
+
 /// Used to test error attribution for `#[serde(flatten)]` fields, which serde
 /// deserializes from buffered entries after the map has been consumed.
 #[derive(Deserialize)]
@@ -107,6 +132,58 @@ pub fn annotation(
         Ok(attrs) => {
             let item = proc_macro2::TokenStream::from(item);
 
+            let mut ident_use = None;
+            if let Some(ident) = &attrs.ident {
+                match ident.parse::<syn::Ident>() {
+                    Ok(parsed) => {
+                        // The parsed identifier should carry the span of the
+                        // attribute value it came from. Emit a use of it so
+                        // that rustc reports the (deliberately undefined) name
+                        // at that span. Then the UI test can verify that span
+                        // attribution is correct.
+                        ident_use = Some(quote! {
+                            const _: () = {
+                                let _ = #parsed;
+                            };
+                        });
+                    }
+                    Err(err) => {
+                        // The syn::Error disallowed_methods lint is meant to
+                        // apply to the main codebase, not to this test library.
+                        #[expect(clippy::disallowed_methods)]
+                        let mut wrapped = syn::Error::new(
+                            ident.span(),
+                            format!(
+                                "`{}` is not a valid identifier: {err}",
+                                ident.value()
+                            ),
+                        );
+                        // Include the raw error so that its span, which comes
+                        // from `parse`, is covered by the UI tests.
+                        wrapped.combine(err);
+                        return wrapped.to_compile_error().into();
+                    }
+                }
+            }
+
+            if let Some(pair) = &attrs.pair {
+                if let Err(err) = pair.value.parse::<syn::Ident>() {
+                    // The syn::Error disallowed_methods lint is meant to apply
+                    // to the main codebase, not to this test library.
+                    #[expect(clippy::disallowed_methods)]
+                    let mut wrapped = syn::Error::new(
+                        pair.value.span(),
+                        format!(
+                            "`{}` is not a valid identifier for key `{}`: {err}",
+                            pair.value.value(),
+                            pair.key.value()
+                        ),
+                    );
+                    wrapped.combine(err);
+                    return wrapped.to_compile_error().into();
+                }
+            }
+
             let bool_assertion = attrs.bool_expr.map(|expr| {
                 // Ensure that the bool_expr really is a boolean expression.
                 let expr = expr.into_inner();
@@ -119,6 +196,8 @@ pub fn annotation(
 
             quote! {
                 #bool_assertion
+
+                #ident_use
 
                 #item
             }

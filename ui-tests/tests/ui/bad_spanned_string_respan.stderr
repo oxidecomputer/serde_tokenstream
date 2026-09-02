@@ -1,0 +1,5 @@
+error[E0425]: cannot find value `undefined_thing` in this scope
+  --> tests/ui/bad_spanned_string_respan.rs:14:13
+   |
+14 |     ident = "undefined_thing",
+   |             ^^^^^^^^^^^^^^^^^ not found in this scope

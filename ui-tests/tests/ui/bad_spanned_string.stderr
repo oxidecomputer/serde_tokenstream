@@ -1,0 +1,11 @@
+error: `not an identifier` is not a valid identifier: unexpected token
+  --> tests/ui/bad_spanned_string.rs:13:13
+   |
+13 |     ident = "not an identifier",
+   |             ^^^^^^^^^^^^^^^^^^^
+
+error: unexpected token
+  --> tests/ui/bad_spanned_string.rs:13:13
+   |
+13 |     ident = "not an identifier",
+   |             ^^^^^^^^^^^^^^^^^^^

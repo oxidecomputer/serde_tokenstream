@@ -1,0 +1,11 @@
+error: `"` is not a valid identifier: cannot parse string into token stream
+  --> tests/ui/bad_spanned_string_lex.rs:13:13
+   |
+13 |     ident = "\"",
+   |             ^^^^
+
+error: cannot parse string into token stream
+  --> tests/ui/bad_spanned_string_lex.rs:13:13
+   |
+13 |     ident = "\"",
+   |             ^^^^
