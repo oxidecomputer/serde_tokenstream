@@ -15,12 +15,22 @@ use crate::serde_tokenstream::spanned_error;
 /// generates code where the caller of that macro might want to augment the
 /// generated code.
 ///
+/// # Limitations
+///
+/// This type can only be deserialized within [`from_tokenstream`] or
+/// [`from_tokenstream_spanned`], and only in positions where serde does not
+/// perform internal buffering (e.g., it cannot be used inside
+/// `#[serde(flatten)]` or `#[serde(untagged)]`). When used with internal
+/// buffering, this produces an error.
+///
 /// # Panics
 ///
 /// The [`Deserialize`] implementation for `TokenStreamWrapper` will panic if
-/// it is not used in the context of [`from_tokenstream`].
+/// it is not used in the context of [`from_tokenstream`] or
+/// [`from_tokenstream_spanned`].
 ///
 /// [`from_tokenstream`]: crate::from_tokenstream
+/// [`from_tokenstream_spanned`]: crate::from_tokenstream_spanned
 #[derive(Clone, Debug, Default)]
 pub struct TokenStreamWrapper(TokenStream);
 
@@ -59,13 +69,23 @@ impl std::ops::Deref for TokenStreamWrapper {
 /// This extends [`TokenStreamWrapper`] by further interpreting the TokenStream
 /// and guiding the user in the case of parse errors.
 ///
+/// # Limitations
+///
+/// This type can only be deserialized within [`from_tokenstream`] or
+/// [`from_tokenstream_spanned`], and only in positions where serde does not
+/// perform internal buffering (e.g., it cannot be used inside
+/// `#[serde(flatten)]` or `#[serde(untagged)]`). When used with internal
+/// buffering, this produces an error.
+///
 /// # Panics
 ///
-/// The [`Deserialize`] implementation for [`TokenStreamWrapper`] will panic if
-/// it is not used in the context of [`from_tokenstream`].
+/// The [`Deserialize`] implementation for `ParseWrapper` will panic if it is
+/// not used in the context of [`from_tokenstream`] or
+/// [`from_tokenstream_spanned`].
 ///
 /// [`Parse`]: syn::parse::Parse
 /// [`from_tokenstream`]: crate::from_tokenstream
+/// [`from_tokenstream_spanned`]: crate::from_tokenstream_spanned
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
 pub struct ParseWrapper<P: syn::parse::Parse>(P);
 
@@ -158,7 +178,16 @@ impl Visitor<'_> for WrapperVisitor {
         &self,
         formatter: &mut std::fmt::Formatter,
     ) -> std::fmt::Result {
-        formatter.write_str("TokenStream")
+        // Serde shows this text to macro users in case of a wrapper being used
+        // with internal buffering. (Not for untagged, though, unfortunately,
+        // because serde swallows errors from untagged variants. Why does
+        // untagged exist at all if the UX is so bad? Great question, and the
+        // answer will be a mystery.)
+        formatter.write_str(
+            "a ParseWrapper or TokenStreamWrapper value; these cannot be used \
+             inside `#[serde(flatten)]`, `#[serde(untagged)]`, or similar -- \
+             this is a bug in the macro",
+        )
     }
 
     fn visit_bytes<E>(self, bytes: &[u8]) -> Result<Self::Value, E>
