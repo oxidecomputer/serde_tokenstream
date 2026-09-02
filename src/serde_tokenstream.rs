@@ -365,6 +365,18 @@ impl TokenDe {
         }
     }
 
+    // Rejects tokens left over inside a parenthesized group after a fixed
+    // number of values has been read.
+    fn expect_close_paren(&mut self) -> InternalResult<()> {
+        match self.next() {
+            None => Ok(()),
+            Some(token) => Err(InternalError::Spanned(spanned_error(
+                &token,
+                format!("expected `)`, but found `{}`", token),
+            ))),
+        }
+    }
+
     fn deserialize_error<VV>(
         &self,
         next: Option<TokenTree>,
@@ -676,12 +688,15 @@ impl<'de> VariantAccess<'de> for &mut TokenDe {
                 // similar to next_value_seed. Fall back to the group if it is
                 // empty.
                 let valtok = inner.input.peek().cloned();
-                return seed.deserialize(&mut inner).map_err(
-                    |err| match &valtok {
-                        Some(token) => err.or_at(token),
-                        None => err.or_at(group),
-                    },
-                );
+                let value =
+                    seed.deserialize(&mut inner).map_err(
+                        |err| match &valtok {
+                            Some(token) => err.or_at(token),
+                            None => err.or_at(group),
+                        },
+                    )?;
+                inner.expect_close_paren()?;
+                return Ok(value);
             }
         }
         self.deserialize_error(next, "(")
@@ -700,9 +715,12 @@ impl<'de> VariantAccess<'de> for &mut TokenDe {
         if let Some(token) = &next {
             if let TokenTree::Group(group) = token {
                 if let Delimiter::Parenthesis = group.delimiter() {
-                    return visitor
-                        .visit_seq(TokenDe::new(group, &group.stream()))
-                        .map_err(|err| err.or_at(token));
+                    let mut inner = TokenDe::new(group, &group.stream());
+                    let value = visitor
+                        .visit_seq(&mut inner)
+                        .map_err(|err| err.or_at(token))?;
+                    inner.expect_close_paren()?;
+                    return Ok(value);
                 }
             }
         }
@@ -1037,7 +1055,10 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
 
         if let Some(TokenTree::Group(group)) = &next {
             if let Delimiter::Parenthesis = group.delimiter() {
-                return visitor.visit_seq(TokenDe::new(group, &group.stream()));
+                let mut inner = TokenDe::new(group, &group.stream());
+                let value = visitor.visit_seq(&mut inner)?;
+                inner.expect_close_paren()?;
+                return Ok(value);
             }
         }
 
