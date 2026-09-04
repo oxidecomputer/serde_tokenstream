@@ -407,3 +407,29 @@ pub fn newtype_variant(
         Err(err) => err.to_compile_error().into(),
     }
 }
+
+// Tests the error in case of a ParseWrapper inside a #[serde(flatten)] struct.
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct FlattenedWrapper {
+    n: u32,
+    #[serde(flatten)]
+    inner: FlattenedWrapperInner,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct FlattenedWrapperInner {
+    id: ParseWrapper<syn::Ident>,
+}
+
+#[proc_macro_attribute]
+pub fn flattened_wrapper(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<FlattenedWrapper>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}

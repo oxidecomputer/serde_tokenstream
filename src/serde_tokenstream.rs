@@ -2181,6 +2181,61 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_wrapper_buffered() {
+        // In situations with internal buffering, we must produce an error
+        // rather than panic.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        #[allow(dead_code)]
+        enum Untagged {
+            I(ParseWrapper<syn::Ident>),
+            N(u32),
+        }
+
+        #[derive(Deserialize)]
+        struct Test {
+            #[allow(dead_code)]
+            u: Untagged,
+        }
+
+        match from_tokenstream::<Test>(&quote! { u = s }) {
+            // With untagged, the error produced by us gets swallowed.
+            Err(err) => assert_eq!(
+                err.to_string(),
+                "data did not match any variant of untagged enum Untagged"
+            ),
+            Ok(_) => panic!("unexpected success"),
+        }
+
+        // With flatten, we can produce a helpful message.
+        #[derive(Deserialize)]
+        struct Inner {
+            #[allow(dead_code)]
+            id: ParseWrapper<syn::Ident>,
+        }
+
+        #[derive(Deserialize)]
+        struct Flat {
+            #[allow(dead_code)]
+            n: u32,
+            #[serde(flatten)]
+            #[allow(dead_code)]
+            inner: Inner,
+        }
+
+        match from_tokenstream::<Flat>(&quote! { n = 1, id = s }) {
+            Err(err) => assert_eq!(
+                err.to_string(),
+                "invalid type: string \"s\", expected a ParseWrapper or \
+                 TokenStreamWrapper value; these cannot be used inside \
+                 `#[serde(flatten)]`, `#[serde(untagged)]`, or similar -- \
+                 this is a bug in the macro"
+            ),
+            Ok(_) => panic!("unexpected success"),
+        }
+    }
+
+    #[test]
     fn parse_u128() {
         #[derive(Deserialize)]
         struct Test {

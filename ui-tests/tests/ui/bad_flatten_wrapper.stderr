@@ -1,0 +1,10 @@
+error: invalid type: string "foo", expected a ParseWrapper or TokenStreamWrapper value; these cannot be used inside `#[serde(flatten)]`, `#[serde(untagged)]`, or similar -- this is a bug in the macro
+  --> tests/ui/bad_flatten_wrapper.rs:8:1
+   |
+8  | / #[flattened_wrapper {
+9  | |     n = 1,
+10 | |     id = foo,
+11 | | }]
+   | |__^
+   |
+   = note: this error originates in the attribute macro `flattened_wrapper` (in Nightly builds, run with -Z macro-backtrace for more info)
