@@ -2,8 +2,9 @@
 
 use std::cell::RefCell;
 
-use proc_macro2::{TokenStream, TokenTree};
+use proc_macro2::{Span, TokenStream, TokenTree};
 use serde::{Deserialize, de::Error, de::Visitor};
+use syn::ext::IdentExt;
 
 use crate::serde_tokenstream::spanned_error;
 
@@ -138,6 +139,163 @@ impl<P: syn::parse::Parse> std::ops::Deref for ParseWrapper<P> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+/// A string value that remembers its span.
+///
+/// Use this as [`ParseWrapper`]`<SpannedString>`. It accepts the same inputs
+/// as [`String`] (a string literal or a bare identifier), but also records the
+/// span of that token. Macros that interpret a string further (as an
+/// identifier, a file name, and so on) can use the span to report errors at
+/// the value itself rather than at the attribute as a whole.
+///
+/// The [`parse`](Self::parse) and [`parse_with`](Self::parse_with) methods
+/// parse the value as Rust syntax, similar to [`syn::LitStr::parse`]. The
+/// resulting types and errors have the correct span information associated with
+/// them.
+///
+/// Equality and hashing compare only the value, not the span.
+///
+/// # Example
+///
+/// ```
+/// use quote::quote;
+/// use serde::Deserialize;
+/// use serde_tokenstream::{ParseWrapper, SpannedString, from_tokenstream};
+///
+/// #[derive(Deserialize)]
+/// struct Config {
+///     module: ParseWrapper<SpannedString>,
+/// }
+///
+/// // In a proc macro, this would be the macro's input.
+/// let attr = quote! { module = "not a module" };
+/// let config = from_tokenstream::<Config>(&attr)?;
+///
+/// // Interpret the value further, reporting errors at the value rather than
+/// // at the attribute as a whole.
+/// let module = config.module.parse::<syn::Ident>().map_err(|err| {
+///     syn::Error::new(
+///         config.module.span(),
+///         format!(
+///             "`{}` is not a valid module name: {err}",
+///             config.module.value()
+///         ),
+///     )
+/// });
+/// assert!(module.is_err());
+/// # Ok::<(), syn::Error>(())
+/// ```
+///
+/// # Limitations
+///
+/// See the [`ParseWrapper`] documentation for limitations.
+///
+/// [`from_tokenstream`]: crate::from_tokenstream
+/// [`from_tokenstream_spanned`]: crate::from_tokenstream_spanned
+#[derive(Debug, Clone)]
+pub struct SpannedString {
+    value: String,
+    span: Span,
+}
+
+impl SpannedString {
+    /// Creates a `SpannedString` from a value and a span.
+    ///
+    /// Deserializing a `ParseWrapper<SpannedString>` is the usual way to
+    /// obtain a `SpannedString` -- this is for cases like default values and
+    /// tests.
+    pub fn new(value: impl Into<String>, span: Span) -> Self {
+        Self { value: value.into(), span }
+    }
+
+    /// Returns the value.
+    ///
+    /// In case of a string literal:
+    ///
+    /// - The quotes are stripped from the value.
+    /// - Escapes are processed, so that (e.g.) `"\n"` becomes a newline.
+    ///
+    /// Identifiers are stored verbatim, so raw identifiers keep the `r#` prefix.
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    /// Returns the span of the token the value was written as.
+    pub fn span(&self) -> Span {
+        self.span
+    }
+
+    /// Returns the value, discarding the span.
+    pub fn into_string(self) -> String {
+        self.value
+    }
+
+    /// Parses the value as a `T`.
+    ///
+    /// In both success and error cases, the span points to this value.
+    pub fn parse<T: syn::parse::Parse>(&self) -> syn::Result<T> {
+        self.parse_with(T::parse)
+    }
+
+    /// Invokes `parser` on the value.
+    ///
+    /// In both success and error cases, the span points to this value.
+    pub fn parse_with<F: syn::parse::Parser>(
+        &self,
+        parser: F,
+    ) -> syn::Result<F::Output> {
+        syn::LitStr::new(&self.value, self.span).parse_with(parser)
+    }
+}
+
+impl AsRef<str> for SpannedString {
+    fn as_ref(&self) -> &str {
+        &self.value
+    }
+}
+
+impl std::fmt::Display for SpannedString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.value)
+    }
+}
+
+impl PartialEq for SpannedString {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl Eq for SpannedString {}
+
+impl std::hash::Hash for SpannedString {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+    }
+}
+
+impl syn::parse::Parse for SpannedString {
+    fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
+        let value = if input.peek(syn::LitStr) {
+            let lit: syn::LitStr = input.parse()?;
+            Self { value: lit.value(), span: lit.span() }
+        } else if input.peek(syn::Ident::peek_any) {
+            // Keywords are accepted, as they are for `String`.
+            let ident = syn::Ident::parse_any(input)?;
+            Self { value: ident.to_string(), span: ident.span() }
+        } else {
+            return Err(match input.cursor().token_tree() {
+                Some((tt, _)) => spanned_error(
+                    &tt,
+                    format!("expected a string, but found `{tt}`"),
+                ),
+                None => input.error("expected a string"),
+            });
+        };
+
+        Ok(value)
     }
 }
 

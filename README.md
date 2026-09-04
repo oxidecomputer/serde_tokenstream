@@ -182,6 +182,34 @@ wrapper around `syn::Parse` that implements `Deserialize`. The latter is useful
 for passing in, for example, a `syn::Path`, or other specific entities from the
 `syn` crate.
 
+## String values with spans
+
+A `String` field accepts either a string literal or a bare identifier, but the
+deserialized `String` doesn't record where it came from. If your macro
+interprets a string further (as an identifier, a file name, and so on),
+deserialize it as a `ParseWrapper<SpannedString>` instead. It accepts the same
+inputs and records the span of the token, so that errors about the value can
+point at the value itself:
+
+```rust
+#[derive(Deserialize)]
+struct Config {
+    module: ParseWrapper<SpannedString>,
+}
+
+let config = from_tokenstream::<Config>(&attr)?;
+let module = config.module.parse::<syn::Ident>().map_err(|err| {
+    syn::Error::new(
+        config.module.span(),
+        format!("`{}` is not a valid module name: {err}", config.module.value()),
+    )
+})?;
+```
+
+Given, for example, `module = "not a module"`, the error is reported at `"not a
+module"`. Values parsed out of a `SpannedString` (via `parse` or `parse_with`)
+also carry the span.
+
 ## OrderedMap
 
 You may want to use the map syntax with keys that cannot be used by types such

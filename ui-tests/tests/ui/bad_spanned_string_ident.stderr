@@ -1,0 +1,11 @@
+error: `mod` is not a valid identifier: expected identifier, found keyword `mod`
+  --> tests/ui/bad_spanned_string_ident.rs:13:13
+   |
+13 |     ident = mod,
+   |             ^^^
+
+error: expected identifier, found keyword `mod`
+  --> tests/ui/bad_spanned_string_ident.rs:13:13
+   |
+13 |     ident = mod,
+   |             ^^^

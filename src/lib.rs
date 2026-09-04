@@ -53,12 +53,19 @@
 //!
 //! For attributes that are nested inside a top-level macro, use the
 //! [`from_tokenstream_spanned`] function. See its help for an example.
+//!
+//! ## Values with spans
+//!
+//! To report errors at a particular value rather than at the attribute as a
+//! whole, deserialize it as a [`ParseWrapper`]: over a `syn` type for Rust
+//! syntax, or over [`SpannedString`] for a plain string or identifier.
 
 mod ibidem;
 mod ordered_map;
 mod serde_tokenstream;
 
 pub use crate::ibidem::ParseWrapper;
+pub use crate::ibidem::SpannedString;
 pub use crate::ibidem::TokenStreamWrapper;
 pub use crate::ordered_map::OrderedMap;
 pub use crate::serde_tokenstream::Error;

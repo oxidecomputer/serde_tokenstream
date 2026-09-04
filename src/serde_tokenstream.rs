@@ -1344,7 +1344,7 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ParseWrapper, ibidem::TokenStreamWrapper};
+    use crate::{ParseWrapper, SpannedString, ibidem::TokenStreamWrapper};
 
     use super::*;
     use quote::{ToTokens, quote};
@@ -2099,6 +2099,96 @@ mod tests {
         })
         .unwrap();
         assert_eq!(d.thing, Thing::D { d: "d".to_string() });
+    }
+
+    #[test]
+    fn test_spanned_string() {
+        #[derive(Deserialize)]
+        struct Stuff {
+            lit: ParseWrapper<SpannedString>,
+            ident: ParseWrapper<SpannedString>,
+            keyword: ParseWrapper<SpannedString>,
+            raw: ParseWrapper<SpannedString>,
+            missing: Option<ParseWrapper<SpannedString>>,
+            present: Option<ParseWrapper<SpannedString>>,
+            many: Vec<ParseWrapper<SpannedString>>,
+        }
+
+        let Stuff { lit, ident, keyword, raw, missing, present, many } =
+            from_tokenstream::<Stuff>(&quote! {
+                lit = "howdy",
+                ident = word,
+                keyword = mod,
+                raw = r#type,
+                present = "here",
+                many = ["a", b],
+            })
+            .unwrap();
+
+        // SpannedString accepts either a string literal or a bare identifier.
+        assert_eq!(lit.value(), "howdy");
+        assert_eq!(ident.value(), "word");
+        assert_eq!(keyword.value(), "mod");
+        assert_eq!(raw.value(), "r#type");
+        assert!(missing.is_none());
+        assert_eq!(present.unwrap().value(), "here");
+        assert_eq!(
+            many.iter().map(|s| s.value()).collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+
+        // The value can be parsed further.
+        assert_eq!(lit.parse::<syn::Ident>().unwrap(), "howdy");
+        assert_eq!(ident.parse::<syn::Ident>().unwrap(), "word");
+        assert_eq!(raw.parse::<syn::Ident>().unwrap(), "r#type");
+        assert_eq!(
+            keyword.parse::<syn::Ident>().unwrap_err().to_string(),
+            "expected identifier, found keyword `mod`"
+        );
+        assert_eq!(
+            lit.parse_with(syn::Path::parse_mod_style)
+                .unwrap()
+                .to_token_stream()
+                .to_string(),
+            "howdy"
+        );
+        assert_eq!(
+            SpannedString::new("\"", proc_macro2::Span::call_site())
+                .parse::<syn::Ident>()
+                .unwrap_err()
+                .to_string(),
+            "cannot parse string into token stream"
+        );
+
+        // Equality compares the value.
+        assert_eq!(
+            *lit,
+            SpannedString::new("howdy", proc_macro2::Span::call_site())
+        );
+        assert_ne!(lit, ident);
+        assert_eq!(lit.to_string(), "howdy");
+    }
+
+    #[test]
+    fn test_spanned_string_error() {
+        // Errors for the wrong kind of token match those for String, and a
+        // missing value is caught by deserialize_bytes.
+        for (tokens, expected) in [
+            (quote! { s = 123 }, "expected a string, but found `123`"),
+            (quote! { s = [a] }, "expected a string, but found `[a]`"),
+            (quote! { s = a b }, "expected `,` or nothing, but found `b`"),
+            (quote! { s = }, "expected a value following `=`"),
+        ] {
+            #[derive(Deserialize)]
+            struct Test {
+                #[allow(dead_code)]
+                s: ParseWrapper<SpannedString>,
+            }
+            match from_tokenstream::<Test>(&tokens) {
+                Err(err) => assert_eq!(err.to_string(), expected),
+                Ok(_) => panic!("unexpected success for `{tokens}`"),
+            }
+        }
     }
 
     // Make sure ParseWrapper<syn::Type> is Hash

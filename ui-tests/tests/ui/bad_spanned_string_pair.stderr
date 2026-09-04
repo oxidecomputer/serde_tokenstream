@@ -1,0 +1,11 @@
+error: `not an identifier` is not a valid identifier for key `foo`: unexpected token
+  --> tests/ui/bad_spanned_string_pair.rs:14:17
+   |
+14 |     pair = foo: "not an identifier",
+   |                 ^^^^^^^^^^^^^^^^^^^
+
+error: unexpected token
+  --> tests/ui/bad_spanned_string_pair.rs:14:17
+   |
+14 |     pair = foo: "not an identifier",
+   |                 ^^^^^^^^^^^^^^^^^^^

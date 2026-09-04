@@ -1,0 +1,5 @@
+error: expected a string, but found `123`
+  --> tests/ui/bad_spanned_string_from_macro_rules.rs:21:7
+   |
+21 | wrap!(123);
+   |       ^^^
