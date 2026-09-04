@@ -228,6 +228,24 @@ pub fn rejected(
     }
 }
 
+// Fixture for TokenStreamWrapper values.
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct Tokens {
+    tokens: serde_tokenstream::TokenStreamWrapper,
+}
+
+#[proc_macro_attribute]
+pub fn tokens(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<Tokens>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
 #[proc_macro_attribute]
 pub fn outer(
     _attr: proc_macro::TokenStream,

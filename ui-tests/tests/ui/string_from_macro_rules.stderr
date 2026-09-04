@@ -1,0 +1,10 @@
+error: expected a unit, but found `1`
+  --> tests/ui/string_from_macro_rules.rs:14:20
+   |
+14 |             unit = 1,
+   |                    ^
+...
+21 | wrap!(foo);
+   | ---------- in this macro invocation
+   |
+   = note: this error originates in the macro `wrap` (in Nightly builds, run with -Z macro-backtrace for more info)

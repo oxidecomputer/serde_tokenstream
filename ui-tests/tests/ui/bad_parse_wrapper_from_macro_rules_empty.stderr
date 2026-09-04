@@ -1,0 +1,10 @@
+error: expected a value, but found `,`
+  --> tests/ui/bad_parse_wrapper_from_macro_rules_empty.rs:15:27
+   |
+15 |             bool_expr = $v,
+   |                           ^
+...
+21 | wrap!(,);
+   | -------- in this macro invocation
+   |
+   = note: this error originates in the macro `wrap` (in Nightly builds, run with -Z macro-backtrace for more info)

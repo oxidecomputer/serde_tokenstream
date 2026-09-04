@@ -1,4 +1,4 @@
-error: expected a string, but found `foo::bar`
+error: expected only a string, but found `foo::bar`
   --> tests/ui/bad_string_from_macro_rules_path.rs:20:7
    |
 20 | wrap!(foo::bar);

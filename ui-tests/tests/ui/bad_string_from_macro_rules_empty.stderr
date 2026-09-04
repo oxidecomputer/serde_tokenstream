@@ -1,0 +1,10 @@
+error: expected a string, but found `,`
+  --> tests/ui/bad_string_from_macro_rules_empty.rs:11:24
+   |
+11 |             string = $v,
+   |                        ^
+...
+20 | wrap!(,);
+   | -------- in this macro invocation
+   |
+   = note: this error originates in the macro `wrap` (in Nightly builds, run with -Z macro-backtrace for more info)
