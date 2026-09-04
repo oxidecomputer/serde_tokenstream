@@ -153,8 +153,8 @@ where
     // On success, check that there aren't additional, unparsed tokens.
     match deserializer.next() {
         None => Ok(result),
-        Some(token) => Err(Error::new(
-            token.span(),
+        Some(token) => Err(spanned_error(
+            &token,
             format!("expected EOF but found `{}`", token),
         )),
     }
@@ -172,7 +172,7 @@ impl InternalError {
     fn into_error(self, fallback: impl ToTokens) -> Error {
         match self {
             InternalError::Spanned(err) => err,
-            InternalError::Unspanned(msg) => Error::new_spanned(fallback, msg),
+            InternalError::Unspanned(msg) => spanned_error(fallback, msg),
         }
     }
 
@@ -180,6 +180,95 @@ impl InternalError {
     fn or_at(self, fallback: impl ToTokens) -> Self {
         InternalError::Spanned(self.into_error(fallback))
     }
+}
+
+/// A better `syn::Error::new_spanned`.
+///
+/// With `macro_rules` macros, `syn::Error::new_spanned` on a proc macro
+/// invocation inside the declarative macro would result in the span being the
+/// macro declaration. This constructor pierces through that to ensure better
+/// diagnostic reporting for this cases.
+///
+/// # Example
+///
+/// Consider a declarative macro that forwards an expression into an attribute
+/// macro that uses `serde_tokenstream`:
+///
+/// ```text
+/// macro_rules! wrap {
+///     ($s:expr) => {
+///         #[annotation {
+///             string = $s,
+///             options = OptionA,
+///             unit = (),
+///             tup = (1, 2.0),
+///         }]
+///         fn test() {}
+///     };
+/// }
+///
+/// wrap!(foo::bar);
+/// ```
+///
+/// `string` is expected to be an identifier, but a path `foo::bar` is passed
+/// in. In this case, `syn::Error::new_spanned` takes the spans of the first and
+/// last tokens it is given, which are both the group, so the diagnostic points to
+/// the definition:
+///
+/// ```text
+/// error: expected a string, but found `foo::bar`
+///   --> tests/ui/bad_string_from_macro_rules_path.rs:11:22
+///    |
+/// 11 |             string = $s,
+///    |                      ^^
+/// ...
+/// 20 | wrap!(foo::bar);
+///    | --------------- in this macro invocation
+/// ```
+///
+/// What `spanned_error` does is replace `Delimiter::None` groups with their contents
+/// (recursively, to handle nested declarative macros) before taking the first
+/// and last spans, so the same error is reported at the invocation:
+///
+/// ```text
+/// error: expected a string, but found `foo::bar`
+///   --> tests/ui/bad_string_from_macro_rules_path.rs:20:7
+///    |
+/// 20 | wrap!(foo::bar);
+///    |       ^^^^^^^^
+/// ```
+///
+/// An empty substitution (for example an empty `$v:vis`) has nothing to
+/// underline, so the group's own span is used as a fallback.
+#[expect(clippy::disallowed_methods)]
+pub fn spanned_error(tokens: impl ToTokens, msg: impl Display) -> Error {
+    let tokens = tokens.into_token_stream();
+    let substituted = flatten_none_groups(tokens.clone());
+    if substituted.is_empty() {
+        // If flattening groups resulted in nothing, we've got to have
+        // _something_ to point to. Use tokens as a fallback.
+        Error::new_spanned(tokens, msg)
+    } else {
+        Error::new_spanned(substituted, msg)
+    }
+}
+
+/// Replaces `Delimiter::None` groups with their contents, recursively.
+///
+/// `Delimiter::None` groups can occur with declarative macro substitutions.
+fn flatten_none_groups(stream: TokenStream) -> TokenStream {
+    stream
+        .into_iter()
+        .flat_map(|tt| match tt {
+            TokenTree::Group(group) if group.delimiter() == Delimiter::None => {
+                flatten_none_groups(group.stream())
+            }
+            TokenTree::Group(_)
+            | TokenTree::Ident(_)
+            | TokenTree::Punct(_)
+            | TokenTree::Literal(_) => TokenStream::from(tt),
+        })
+        .collect()
 }
 
 type InternalResult<T> = std::result::Result<T, InternalError>;
@@ -211,8 +300,8 @@ impl TokenDe {
         match self.next() {
             None => Ok(()),
             Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => Ok(()),
-            Some(token) => Err(InternalError::Spanned(Error::new(
-                token.span(),
+            Some(token) => Err(InternalError::Spanned(spanned_error(
+                &token,
                 format!("expected `,` or nothing, but found `{}`", token),
             ))),
         }
@@ -232,14 +321,14 @@ impl TokenDe {
 
     fn last_err<T>(&self, what: &str) -> InternalResult<T> {
         match &self.last {
-            Some(token) => Err(InternalError::Spanned(Error::new(
-                token.span(),
+            Some(token) => Err(InternalError::Spanned(spanned_error(
+                token,
                 format!("expected {} following `{}`", what, token),
             ))),
             // Nothing's been read yet, so the enclosing group is empty. This
             // can happen in situations like `V()`.
-            None => Err(InternalError::Spanned(Error::new(
-                self.enclosing.span(),
+            None => Err(InternalError::Spanned(spanned_error(
+                &self.enclosing,
                 format!("expected {} inside `{}`", what, self.enclosing),
             ))),
         }
@@ -251,8 +340,8 @@ impl TokenDe {
         what: &str,
     ) -> InternalResult<VV> {
         match next {
-            Some(token) => Err(InternalError::Spanned(Error::new(
-                token.span(),
+            Some(token) => Err(InternalError::Spanned(spanned_error(
+                &token,
                 format!("expected {}, but found `{}`", what, token),
             ))),
             None => self.last_err(what),
@@ -381,14 +470,14 @@ impl<'de> MapAccess<'de> for TokenDe {
                 }
 
                 Some(token) => {
-                    return Err(InternalError::Spanned(Error::new(
-                        token.span(),
+                    return Err(InternalError::Spanned(spanned_error(
+                        &token,
                         format!("expected `=`, but found `{}`", token),
                     )));
                 }
                 None => {
-                    return Err(InternalError::Spanned(Error::new(
-                        keytok.span(),
+                    return Err(InternalError::Spanned(spanned_error(
+                        &keytok,
                         format!("expected `=` following `{}`", keytok),
                     )));
                 }
@@ -971,7 +1060,7 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
             ts.extend(vec![keytok.clone(), self.previous().unwrap()]);
 
             // Create an error that underlines key, =, and value.
-            let mut err = Error::new_spanned(ts, msg);
+            let mut err = spanned_error(ts, msg);
 
             // Add in the value error if there was one.
             if let Err(e2) = value {

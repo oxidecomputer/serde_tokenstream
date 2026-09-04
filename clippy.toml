@@ -1,0 +1,4 @@
+disallowed-methods = [
+  { path = "syn::Error::new", reason = "use spanned_error, which reports macro_rules substitutions at the invocation" },
+  { path = "syn::Error::new_spanned", reason = "use spanned_error, which reports macro_rules substitutions at the invocation" },
+]

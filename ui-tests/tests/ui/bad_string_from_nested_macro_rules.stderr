@@ -1,0 +1,5 @@
+error: expected a string, but found `123`
+  --> tests/ui/bad_string_from_nested_macro_rules.rs:26:8
+   |
+26 | outer!(123);
+   |        ^^^
