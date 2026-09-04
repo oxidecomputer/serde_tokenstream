@@ -1,0 +1,5 @@
+sign-tag = true
+pre-release-commit-message = "release {{version}}"
+tag-message = "release {{version}}"
+tag-name = "v{{version}}"
+publish = false
