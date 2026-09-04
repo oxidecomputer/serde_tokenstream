@@ -149,9 +149,6 @@ where
             "Error::Unspanned should never propagate to the caller: {}",
             msg
         ),
-        Err(InternalError::Unknown) => {
-            panic!("Error::Unknown should never propagate to the caller")
-        }
     }
 }
 
@@ -159,7 +156,6 @@ where
 enum InternalError {
     Spanned(Error),
     Unspanned(String),
-    Unknown,
 }
 
 type InternalResult<T> = std::result::Result<T, InternalError>;
@@ -169,6 +165,9 @@ struct TokenDe {
     current: Option<TokenTree>,
     last: Option<TokenTree>,
     pending_member: bool,
+    // The group whose contents this deserializer is currently reading. This is
+    // used as a fallback in case a more specific span isn't available.
+    enclosing: Group,
 }
 
 impl<'de> TokenDe {
@@ -185,10 +184,10 @@ impl<'de> TokenDe {
         if let Some(span) = span {
             group.set_span(span.join());
         }
-        TokenDe::new(&TokenStream::from(TokenTree::from(group)))
+        TokenDe::new(&group, &TokenStream::from(TokenTree::from(group.clone())))
     }
 
-    fn new(input: &'de TokenStream) -> Self {
+    fn new(enclosing: &Group, input: &'de TokenStream) -> Self {
         let t: Box<dyn Iterator<Item = TokenTree>> =
             Box::new(input.clone().into_iter());
         TokenDe {
@@ -196,6 +195,7 @@ impl<'de> TokenDe {
             current: None,
             last: None,
             pending_member: false,
+            enclosing: enclosing.clone(),
         }
     }
 
@@ -228,11 +228,12 @@ impl<'de> TokenDe {
                 token.span(),
                 format!("expected {} following `{}`", what, token),
             ))),
-            // It should not be possible to reach this point. Although
-            // `self.last` starts as `None`, the first thing we'll try to do
-            // is deserialize a structure type based on the `Group` we create
-            // in `::from_tokenstream`.
-            None => Err(InternalError::Unknown),
+            // Nothing's been read yet, so the enclosing group is empty. This
+            // can happen in situations like `V()`.
+            None => Err(InternalError::Spanned(Error::new(
+                self.enclosing.span(),
+                format!("expected {} inside `{}`", what, self.enclosing),
+            ))),
         }
     }
 
@@ -458,7 +459,10 @@ impl<'de> EnumAccess<'de> for &mut TokenDe {
                 }
                 // This can't happen; we will need to have read a token at
                 // this point.
-                None => Err(InternalError::Unknown),
+                None => Err(InternalError::Spanned(Error::new(
+                    self.enclosing.span(),
+                    msg,
+                ))),
             },
             Err(err) => Err(err),
         }
@@ -480,7 +484,8 @@ impl<'de> VariantAccess<'de> for &mut TokenDe {
 
         if let Some(TokenTree::Group(group)) = &next {
             if let Delimiter::Parenthesis = group.delimiter() {
-                return seed.deserialize(&mut TokenDe::new(&group.stream()));
+                return seed
+                    .deserialize(&mut TokenDe::new(group, &group.stream()));
             }
         }
         self.deserialize_error(next, "(")
@@ -500,7 +505,7 @@ impl<'de> VariantAccess<'de> for &mut TokenDe {
             if let TokenTree::Group(group) = token {
                 if let Delimiter::Parenthesis = group.delimiter() {
                     return match visitor
-                        .visit_seq(TokenDe::new(&group.stream()))
+                        .visit_seq(TokenDe::new(group, &group.stream()))
                     {
                         Err(InternalError::Unspanned(msg)) => {
                             Err(InternalError::Spanned(Error::new(
@@ -534,7 +539,9 @@ impl<'de> VariantAccess<'de> for &mut TokenDe {
                     // then use that rather than the call to
                     // deserialize_ignored_any to determine if the
                     // given field is valid.
-                    match visitor.visit_map(TokenDe::new(&group.stream())) {
+                    match visitor
+                        .visit_map(TokenDe::new(group, &group.stream()))
+                    {
                         Err(InternalError::Unspanned(msg)) => {
                             return Err(InternalError::Spanned(Error::new(
                                 token.span(),
@@ -631,7 +638,7 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
             if let TokenTree::Group(group) = token {
                 if let Delimiter::Bracket = group.delimiter() {
                     return match visitor
-                        .visit_seq(TokenDe::new(&group.stream()))
+                        .visit_seq(TokenDe::new(group, &group.stream()))
                     {
                         Err(InternalError::Unspanned(msg)) => {
                             Err(InternalError::Spanned(Error::new(
@@ -666,7 +673,9 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
                     // then use that rather than the call to
                     // deserialize_ignored_any to determine if the
                     // given field is valid.
-                    match visitor.visit_map(TokenDe::new(&group.stream())) {
+                    match visitor
+                        .visit_map(TokenDe::new(group, &group.stream()))
+                    {
                         Err(InternalError::Unspanned(msg)) => {
                             return Err(InternalError::Spanned(Error::new(
                                 token.span(),
@@ -690,7 +699,7 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
 
         if let Some(TokenTree::Group(group)) = &next {
             if let Delimiter::Brace = group.delimiter() {
-                return visitor.visit_map(TokenDe::new(&group.stream()));
+                return visitor.visit_map(TokenDe::new(group, &group.stream()));
             }
         }
 
@@ -770,7 +779,7 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
             if let TokenTree::Group(group) = token {
                 if let Delimiter::Parenthesis = group.delimiter() {
                     return match visitor
-                        .visit_seq(TokenDe::new(&group.stream()))
+                        .visit_seq(TokenDe::new(group, &group.stream()))
                     {
                         Err(InternalError::Unspanned(msg)) => {
                             Err(InternalError::Spanned(Error::new(
@@ -797,24 +806,23 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
             None => self.last_err("a value"),
             Some(TokenTree::Group(group)) => match group.delimiter() {
                 Delimiter::Brace => {
-                    visitor.visit_map(TokenDe::new(&group.stream()))
+                    visitor.visit_map(TokenDe::new(group, &group.stream()))
                 }
                 Delimiter::Bracket => {
-                    visitor.visit_seq(TokenDe::new(&group.stream()))
+                    visitor.visit_seq(TokenDe::new(group, &group.stream()))
                 }
                 Delimiter::Parenthesis => {
                     let stream = &group.stream();
                     if stream.is_empty() {
                         visitor.visit_unit()
                     } else {
-                        visitor.visit_seq(TokenDe::new(stream))
+                        visitor.visit_seq(TokenDe::new(group, stream))
                     }
                 }
                 // A None delimiter occurs for a macro_rules! substitution. We
                 // can simply descend into those tokens.
-                Delimiter::None => {
-                    TokenDe::new(&group.stream()).deserialize_any(visitor)
-                }
+                Delimiter::None => TokenDe::new(group, &group.stream())
+                    .deserialize_any(visitor),
             },
             Some(TokenTree::Ident(ident)) if *ident == "true" => {
                 visitor.visit_bool(true)
@@ -984,7 +992,7 @@ impl<'de> Deserializer<'de> for &mut TokenDe {
                 // This can't happen -- we need to have read a token in order
                 // for serde to determine that this value will
                 // be ignored.
-                None => return Err(InternalError::Unknown),
+                None => TokenTree::Group(self.enclosing.clone()),
             };
 
             // We know this is going to be an error, but we parse the value

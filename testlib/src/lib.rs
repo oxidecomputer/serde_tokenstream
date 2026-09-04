@@ -139,3 +139,26 @@ pub fn outer(
         Err(err) => err.to_compile_error().into(),
     }
 }
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct NewtypeVariant {
+    value: Wrapped,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+enum Wrapped {
+    Named(String),
+}
+
+#[proc_macro_attribute]
+pub fn newtype_variant(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match from_tokenstream::<NewtypeVariant>(&attr.into()) {
+        Ok(_) => item,
+        Err(err) => err.to_compile_error().into(),
+    }
+}
