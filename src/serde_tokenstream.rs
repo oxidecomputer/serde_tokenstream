@@ -2125,6 +2125,62 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_wrapper_default_and_clone() {
+        fn default_ident() -> ParseWrapper<syn::Ident> {
+            ParseWrapper::from(syn::Ident::new(
+                "fallback",
+                proc_macro2::Span::call_site(),
+            ))
+        }
+
+        #[derive(Deserialize, Clone)]
+        struct Input {
+            #[serde(default = "default_ident")]
+            ident: ParseWrapper<syn::Ident>,
+        }
+
+        let input = from_tokenstream::<Input>(&quote! {}).unwrap();
+        assert_eq!(*input.clone().ident, "fallback");
+
+        let input =
+            from_tokenstream::<Input>(&quote! { ident = given }).unwrap();
+        assert_eq!(*input.ident, "given");
+
+        #[derive(Deserialize)]
+        struct Generic {
+            #[serde(default)]
+            generics: ParseWrapper<syn::Generics>,
+        }
+
+        let input = from_tokenstream::<Generic>(&quote! {}).unwrap();
+        assert!(input.generics.params.is_empty());
+
+        let input =
+            from_tokenstream::<Generic>(&quote! { generics = <T: Copy> })
+                .unwrap();
+        assert_eq!(input.generics.params.len(), 1);
+    }
+
+    #[test]
+    fn test_token_stream_wrapper_default_and_clone() {
+        #[derive(Deserialize, Clone)]
+        struct Input {
+            #[serde(default)]
+            tokens: TokenStreamWrapper,
+        }
+
+        let input = from_tokenstream::<Input>(&quote! {}).unwrap();
+        assert!(input.clone().tokens.is_empty());
+
+        let input =
+            from_tokenstream::<Input>(&quote! { tokens = a + b }).unwrap();
+        assert_eq!(input.tokens.to_string(), "a + b");
+
+        let wrapper = TokenStreamWrapper::from(quote! { x });
+        assert_eq!(wrapper.into_inner().to_string(), "x");
+    }
+
+    #[test]
     fn parse_u128() {
         #[derive(Deserialize)]
         struct Test {

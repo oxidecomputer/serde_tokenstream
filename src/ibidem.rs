@@ -21,12 +21,18 @@ use crate::serde_tokenstream::spanned_error;
 /// it is not used in the context of [`from_tokenstream`].
 ///
 /// [`from_tokenstream`]: crate::from_tokenstream
-#[derive(Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TokenStreamWrapper(TokenStream);
 
 impl TokenStreamWrapper {
     pub fn into_inner(self) -> TokenStream {
         self.0
+    }
+}
+
+impl From<TokenStream> for TokenStreamWrapper {
+    fn from(inner: TokenStream) -> Self {
+        Self(inner)
     }
 }
 
@@ -60,12 +66,18 @@ impl std::ops::Deref for TokenStreamWrapper {
 ///
 /// [`Parse`]: syn::parse::Parse
 /// [`from_tokenstream`]: crate::from_tokenstream
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
 pub struct ParseWrapper<P: syn::parse::Parse>(P);
 
 impl<P: syn::parse::Parse> ParseWrapper<P> {
     pub fn into_inner(self) -> P {
         self.0
+    }
+}
+
+impl<P: syn::parse::Parse> From<P> for ParseWrapper<P> {
+    fn from(inner: P) -> Self {
+        Self(inner)
     }
 }
 
