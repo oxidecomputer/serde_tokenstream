@@ -1,0 +1,5 @@
+error: expected `,` or nothing, but found `false`
+  --> tests/ui/bad_parse_wrapper_stray.rs:13:22
+   |
+13 |     bool_expr = true false
+   |                      ^^^^^
