@@ -180,8 +180,8 @@ thread_local! {
     //    `set_parse_error`.
     // 2. `ParseWrapper::deserialize` calls `D::Error::custom(msg)`.
     // 3. `InternalError::custom` calls `take_parse_error` and, if set,
-    //    returns `InternalError::Normal(syn_error)` instead of
-    //    `InternalError::NoData(msg)`.
+    //    returns `InternalError::Spanned(syn_error)` instead of
+    //    `InternalError::Unspanned(msg)`.
     //
     // As with `WRAPPER_TOKENS`, the set/take sequence is immediate.
     static PARSE_ERROR: RefCell<Option<syn::Error>> = Default::default();
