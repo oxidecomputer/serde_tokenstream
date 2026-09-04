@@ -18,6 +18,14 @@ keywords = ["serde", "tokenstream", "proc_macro"]
 categories = ["development-tools::procedural-macro-helpers", "parsing"]
 rust-version = "1.85"
 
+[package.metadata.release]
+pre-release-replacements = [
+    { file = "CHANGELOG.md", search = "Unreleased", replace = "[{{version}}]", min = 1 },
+    { file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}", min = 1 },
+    { file = "CHANGELOG.md", search = "<!-- next-header -->", replace = "<!-- next-header -->\n## Unreleased - ReleaseDate\n", exactly = 1 },
+    { file = "CHANGELOG.md", search = "<!-- next-url -->", replace = "<!-- next-url -->\n[{{version}}]: https://github.com/oxidecomputer/serde_tokenstream/releases/tag/v{{version}}", exactly = 1 },
+]
+
 [dependencies]
 proc-macro2  = "1.0"
 quote = "1.0"
