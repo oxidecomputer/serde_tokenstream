@@ -394,6 +394,7 @@ struct NewtypeVariant {
 enum Wrapped {
     Named(String),
     Even(Even),
+    Pair(String, String),
 }
 
 #[proc_macro_attribute]

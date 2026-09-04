@@ -1,0 +1,5 @@
+error: expected `)`, but found `,`
+ --> tests/ui/bad_newtype_variant_extra.rs:8:22
+  |
+8 |     value = Named("a", "b"),
+  |                      ^

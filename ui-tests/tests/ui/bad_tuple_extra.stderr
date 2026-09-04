@@ -1,0 +1,5 @@
+error: expected `)`, but found `3`
+  --> tests/ui/bad_tuple_extra.rs:11:20
+   |
+11 |     tup = (1, 2.0, 3),
+   |                    ^

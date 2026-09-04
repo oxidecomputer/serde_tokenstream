@@ -1,0 +1,5 @@
+error: expected `)`, but found `"c"`
+ --> tests/ui/bad_tuple_variant_extra.rs:8:28
+  |
+8 |     value = Pair("a", "b", "c"),
+  |                            ^^^
