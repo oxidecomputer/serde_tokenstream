@@ -1,0 +1,9 @@
+error: 3 is odd
+  --> tests/ui/bad_try_from.rs:9:1
+   |
+9  | / #[even {
+10 | |     n = 3,
+11 | | }]
+   | |__^
+   |
+   = note: this error originates in the attribute macro `even` (in Nightly builds, run with -Z macro-backtrace for more info)

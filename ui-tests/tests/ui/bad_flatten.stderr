@@ -1,0 +1,9 @@
+error: missing field `needed`
+  --> tests/ui/bad_flatten.rs:8:1
+   |
+8  | / #[flattened {
+9  | |     outer = 1,
+10 | | }]
+   | |__^
+   |
+   = note: this error originates in the attribute macro `flattened` (in Nightly builds, run with -Z macro-backtrace for more info)

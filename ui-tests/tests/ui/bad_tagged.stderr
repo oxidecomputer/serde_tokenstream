@@ -1,0 +1,9 @@
+error: missing field `kind`
+  --> tests/ui/bad_tagged.rs:9:1
+   |
+9  | / #[tagged {
+10 | |     x = 1,
+11 | | }]
+   | |__^
+   |
+   = note: this error originates in the attribute macro `tagged` (in Nightly builds, run with -Z macro-backtrace for more info)

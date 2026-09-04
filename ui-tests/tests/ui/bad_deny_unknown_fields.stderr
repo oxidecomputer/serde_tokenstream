@@ -1,0 +1,5 @@
+error: unknown field `b`, expected `a`
+  --> tests/ui/bad_deny_unknown_fields.rs:10:5
+   |
+10 |     b = 2,
+   |     ^
